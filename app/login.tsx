@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Session } from '@supabase/supabase-js';
 import { useState } from 'react';
 import {
@@ -13,6 +14,7 @@ import {
   View,
 } from 'react-native';
 
+import { AppTheme } from '@/constants/theme';
 import { supabase } from '@/src/lib/supabase';
 
 type LoadingAction = 'signIn' | 'signUp' | null;
@@ -160,6 +162,13 @@ export default function Login({ onAuthSuccess }: LoginProps) {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
           <View style={styles.header}>
+            <View style={styles.brandMark}>
+              <MaterialCommunityIcons
+                name="silverware-fork-knife"
+                size={28}
+                color={AppTheme.primary}
+              />
+            </View>
             <Text style={styles.title}>Suivi Repas</Text>
             <Text style={styles.subtitle}>
               Connecte-toi pour suivre tes repas et ton poids
@@ -178,7 +187,7 @@ export default function Login({ onAuthSuccess }: LoginProps) {
                 editable={!isLoading}
                 keyboardType="email-address"
                 placeholder="email@exemple.com"
-                placeholderTextColor="#8A96A8"
+                placeholderTextColor={AppTheme.placeholder}
                 returnKeyType="next"
                 style={styles.input}
                 textContentType="emailAddress"
@@ -196,7 +205,7 @@ export default function Login({ onAuthSuccess }: LoginProps) {
                 editable={!isLoading}
                 onSubmitEditing={handleSignIn}
                 placeholder="Mot de passe"
-                placeholderTextColor="#8A96A8"
+                placeholderTextColor={AppTheme.placeholder}
                 returnKeyType="done"
                 secureTextEntry
                 style={styles.input}
@@ -224,9 +233,12 @@ export default function Login({ onAuthSuccess }: LoginProps) {
                 isLoading && !isSignInLoading && styles.buttonDisabled,
               ]}>
               {isSignInLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={AppTheme.surface} />
               ) : (
-                <Text style={styles.primaryButtonText}>Se connecter</Text>
+                <>
+                  <MaterialCommunityIcons name="login" size={19} color={AppTheme.surface} />
+                  <Text style={styles.primaryButtonText}>Se connecter</Text>
+                </>
               )}
             </Pressable>
 
@@ -240,9 +252,16 @@ export default function Login({ onAuthSuccess }: LoginProps) {
                 isLoading && !isSignUpLoading && styles.buttonDisabled,
               ]}>
               {isSignUpLoading ? (
-                <ActivityIndicator color="#2563EB" />
+                <ActivityIndicator color={AppTheme.primary} />
               ) : (
-                <Text style={styles.secondaryButtonText}>Créer un compte</Text>
+                <>
+                  <MaterialCommunityIcons
+                    name="account-plus-outline"
+                    size={19}
+                    color={AppTheme.primary}
+                  />
+                  <Text style={styles.secondaryButtonText}>Créer un compte</Text>
+                </>
               )}
             </Pressable>
           </View>
@@ -255,7 +274,7 @@ export default function Login({ onAuthSuccess }: LoginProps) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F3F7FB',
+    backgroundColor: AppTheme.background,
   },
   content: {
     flexGrow: 1,
@@ -264,26 +283,38 @@ const styles = StyleSheet.create({
   },
   card: {
     gap: 22,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surface,
     padding: 24,
-    shadowColor: '#0F172A',
+    shadowColor: AppTheme.shadow,
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.09,
     shadowRadius: 24,
     elevation: 5,
   },
   header: {
-    gap: 8,
+    gap: 10,
+  },
+  brandMark: {
+    width: 58,
+    height: 58,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 14,
+    backgroundColor: AppTheme.primarySoft,
   },
   title: {
-    color: '#132033',
+    color: AppTheme.text,
     fontSize: 34,
-    fontWeight: '800',
+    fontWeight: '900',
     lineHeight: 40,
   },
   subtitle: {
-    color: '#5A6B7D',
+    color: AppTheme.textSoft,
     fontSize: 16,
     lineHeight: 23,
   },
@@ -294,84 +325,91 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    color: '#334155',
+    color: AppTheme.textSoft,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '900',
   },
   input: {
     minHeight: 52,
     borderWidth: 1,
-    borderColor: '#D7E0EA',
-    borderRadius: 14,
-    backgroundColor: '#F8FAFC',
-    color: '#132033',
+    borderColor: AppTheme.border,
+    borderRadius: 10,
+    backgroundColor: AppTheme.surfaceAlt,
+    color: AppTheme.text,
     fontSize: 16,
     paddingHorizontal: 16,
   },
   feedback: {
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
     padding: 12,
   },
   infoFeedback: {
-    borderColor: '#BFDBFE',
-    backgroundColor: '#EFF6FF',
+    borderColor: AppTheme.primaryBorder,
+    backgroundColor: AppTheme.primarySoft,
   },
   successFeedback: {
-    borderColor: '#BBF7D0',
-    backgroundColor: '#F0FDF4',
+    borderColor: AppTheme.successBorder,
+    backgroundColor: AppTheme.successSoft,
   },
   errorFeedback: {
-    borderColor: '#FECACA',
-    backgroundColor: '#FEF2F2',
+    borderColor: AppTheme.dangerBorder,
+    backgroundColor: AppTheme.dangerSoft,
   },
   feedbackText: {
     fontSize: 14,
     lineHeight: 20,
   },
   infoFeedbackText: {
-    color: '#1D4ED8',
+    color: AppTheme.primary,
   },
   successFeedbackText: {
-    color: '#15803D',
+    color: AppTheme.success,
   },
   errorFeedbackText: {
-    color: '#B91C1C',
+    color: AppTheme.danger,
   },
   actions: {
     gap: 12,
   },
   button: {
     minHeight: 52,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
+    gap: 8,
+    borderRadius: 10,
   },
   primaryButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: AppTheme.primary,
+    shadowColor: AppTheme.shadow,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.13,
+    shadowRadius: 12,
+    elevation: 3,
   },
   secondaryButton: {
     borderWidth: 1,
-    borderColor: '#2563EB',
-    backgroundColor: '#FFFFFF',
+    borderColor: AppTheme.primaryBorder,
+    backgroundColor: AppTheme.surface,
   },
   primaryButtonPressed: {
     opacity: 0.85,
   },
   secondaryButtonPressed: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: AppTheme.primarySoftPressed,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   primaryButtonText: {
-    color: '#FFFFFF',
+    color: AppTheme.surface,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   secondaryButtonText: {
-    color: '#2563EB',
+    color: AppTheme.primary,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '900',
   },
 });

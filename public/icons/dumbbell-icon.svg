@@ -1,0 +1,20 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#F3F8F4" stroke="#00561b" stroke-width="2"/>
+  
+  <!-- Dumbbell -->
+  <!-- Left weight -->
+  <rect x="20" y="80" width="30" height="40" rx="5" fill="#00561b"/>
+  
+  <!-- Left handle connection -->
+  <rect x="50" y="85" width="15" height="30" fill="#003f14"/>
+  
+  <!-- Center bar -->
+  <rect x="65" y="90" width="70" height="20" rx="3" fill="#003f14"/>
+  
+  <!-- Right handle connection -->
+  <rect x="135" y="85" width="15" height="30" fill="#003f14"/>
+  
+  <!-- Right weight -->
+  <rect x="150" y="80" width="30" height="40" rx="5" fill="#00561b"/>
+</svg>

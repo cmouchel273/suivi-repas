@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import type { Session } from '@supabase/supabase-js';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import type { Session } from '@supabase/supabase-js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppTheme } from '@/constants/theme';
 import { supabase } from '@/src/lib/supabase';
 
 type HomeProps = {
@@ -616,7 +617,11 @@ export default function Home({ session }: HomeProps) {
 
       <View style={styles.infoRows}>
         <View style={styles.infoRow}>
-          <MaterialCommunityIcons name="silverware-fork-knife" size={21} color="#2563EB" />
+          <MaterialCommunityIcons
+            name="silverware-fork-knife"
+            size={21}
+            color={AppTheme.primary}
+          />
           <View style={styles.infoText}>
             <Text style={styles.infoLabel}>Dernier repas</Text>
             <Text style={styles.infoValue}>
@@ -635,7 +640,7 @@ export default function Home({ session }: HomeProps) {
         </View>
 
         <View style={styles.infoRow}>
-          <MaterialCommunityIcons name="scale-bathroom" size={21} color="#16A34A" />
+          <MaterialCommunityIcons name="scale-bathroom" size={21} color={AppTheme.success} />
           <View style={styles.infoText}>
             <Text style={styles.infoLabel}>Dernier poids</Text>
             <Text style={styles.infoValue}>
@@ -649,21 +654,13 @@ export default function Home({ session }: HomeProps) {
 
   const renderHomeTab = () => (
     <View style={styles.tabContent}>
-      <View style={styles.heroCard}>
-        <Text style={styles.kicker}>Groupe</Text>
-        <Text style={styles.title}>Accueil</Text>
-        <Text style={styles.subtitle}>
-          Les dernières informations de tous les utilisateurs apparaissent ici.
-        </Text>
-      </View>
-
       <View style={styles.sectionHeader}>
         <View>
           <Text style={styles.sectionTitle}>Derniers suivis</Text>
           <Text style={styles.sectionSubtitle}>{todayLabel}</Text>
         </View>
         <Pressable onPress={loadDashboard} style={styles.refreshButton}>
-          <MaterialCommunityIcons name="refresh" size={20} color="#2563EB" />
+          <MaterialCommunityIcons name="refresh" size={20} color={AppTheme.primary} />
         </Pressable>
       </View>
 
@@ -675,7 +672,7 @@ export default function Home({ session }: HomeProps) {
 
       {isDashboardLoading ? (
         <View style={styles.loadingCard}>
-          <ActivityIndicator color="#2563EB" />
+          <ActivityIndicator color={AppTheme.primary} />
           <Text style={styles.loadingText}>Chargement du groupe...</Text>
         </View>
       ) : (
@@ -702,7 +699,7 @@ export default function Home({ session }: HomeProps) {
           isSigningOut && styles.buttonDisabled,
         ]}>
         {isSigningOut ? (
-          <ActivityIndicator color="#2563EB" />
+          <ActivityIndicator color={AppTheme.primary} />
         ) : (
           <Text style={styles.signOutButtonText}>Se déconnecter</Text>
         )}
@@ -727,7 +724,7 @@ export default function Home({ session }: HomeProps) {
             onChangeText={setMealName}
             editable={!isSavingMeal}
             placeholder="Ex : Poulet riz"
-            placeholderTextColor="#8A96A8"
+            placeholderTextColor={AppTheme.placeholder}
             style={styles.input}
           />
         </View>
@@ -740,7 +737,7 @@ export default function Home({ session }: HomeProps) {
             editable={!isSavingMeal}
             keyboardType="numeric"
             placeholder="Ex : 650"
-            placeholderTextColor="#8A96A8"
+            placeholderTextColor={AppTheme.placeholder}
             style={styles.input}
           />
         </View>
@@ -753,7 +750,7 @@ export default function Home({ session }: HomeProps) {
             editable={!isSavingMeal}
             keyboardType="numeric"
             placeholder="Ex : 42"
-            placeholderTextColor="#8A96A8"
+            placeholderTextColor={AppTheme.placeholder}
             style={styles.input}
           />
         </View>
@@ -769,7 +766,7 @@ export default function Home({ session }: HomeProps) {
                 pressed && styles.photoActionButtonPressed,
                 isSavingMeal && styles.buttonDisabled,
               ]}>
-              <MaterialCommunityIcons name="camera-outline" size={19} color="#2563EB" />
+              <MaterialCommunityIcons name="camera-outline" size={19} color={AppTheme.primary} />
               <Text style={styles.photoActionButtonText}>Prendre</Text>
             </Pressable>
             <Pressable
@@ -780,7 +777,7 @@ export default function Home({ session }: HomeProps) {
                 pressed && styles.photoActionButtonPressed,
                 isSavingMeal && styles.buttonDisabled,
               ]}>
-              <MaterialCommunityIcons name="image-outline" size={19} color="#2563EB" />
+              <MaterialCommunityIcons name="image-outline" size={19} color={AppTheme.primary} />
               <Text style={styles.photoActionButtonText}>Choisir</Text>
             </Pressable>
           </View>
@@ -800,13 +797,13 @@ export default function Home({ session }: HomeProps) {
                   pressed && styles.removePhotoButtonPressed,
                   isSavingMeal && styles.buttonDisabled,
                 ]}>
-                <MaterialCommunityIcons name="close" size={18} color="#B91C1C" />
+                <MaterialCommunityIcons name="close" size={18} color={AppTheme.danger} />
                 <Text style={styles.removePhotoButtonText}>Retirer</Text>
               </Pressable>
             </View>
           ) : (
             <View style={styles.photoPlaceholder}>
-              <MaterialCommunityIcons name="image-plus" size={26} color="#94A3B8" />
+              <MaterialCommunityIcons name="image-plus" size={26} color={AppTheme.textMuted} />
               <Text style={styles.photoPlaceholderText}>Aucune photo sélectionnée</Text>
             </View>
           )}
@@ -821,7 +818,7 @@ export default function Home({ session }: HomeProps) {
             isSavingMeal && styles.buttonDisabled,
           ]}>
           {isSavingMeal ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={AppTheme.surface} />
           ) : (
             <Text style={styles.primaryButtonText}>Ajouter le repas</Text>
           )}
@@ -850,7 +847,7 @@ export default function Home({ session }: HomeProps) {
             editable={!isSavingWeight}
             keyboardType="decimal-pad"
             placeholder="Ex : 78.5"
-            placeholderTextColor="#8A96A8"
+            placeholderTextColor={AppTheme.placeholder}
             style={styles.input}
           />
         </View>
@@ -864,7 +861,7 @@ export default function Home({ session }: HomeProps) {
             isSavingWeight && styles.buttonDisabled,
           ]}>
           {isSavingWeight ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={AppTheme.surface} />
           ) : (
             <Text style={styles.primaryButtonText}>Ajouter le poids</Text>
           )}
@@ -891,6 +888,27 @@ export default function Home({ session }: HomeProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.appBar}>
+            <View style={styles.brandLockup}>
+              <View style={styles.brandMark}>
+                <MaterialCommunityIcons
+                  name="silverware-fork-knife"
+                  size={22}
+                  color={AppTheme.primary}
+                />
+              </View>
+              <View style={styles.brandText}>
+                <Text style={styles.appName}>Suivi Repas</Text>
+                <Text numberOfLines={1} style={styles.appMeta}>
+                  {email}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.sessionPill}>
+              <MaterialCommunityIcons name="leaf" size={16} color={AppTheme.primary} />
+              <Text style={styles.sessionPillText}>Connecté</Text>
+            </View>
+          </View>
           {renderActiveTab()}
         </ScrollView>
 
@@ -910,7 +928,7 @@ export default function Home({ session }: HomeProps) {
                 <MaterialCommunityIcons
                   name={tab.icon}
                   size={24}
-                  color={isActive ? '#2563EB' : '#64748B'}
+                  color={isActive ? AppTheme.primary : AppTheme.textMuted}
                 />
                 <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
                   {tab.label}
@@ -927,49 +945,94 @@ export default function Home({ session }: HomeProps) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F3F7FB',
+    backgroundColor: AppTheme.background,
   },
   keyboardView: {
     flex: 1,
   },
   content: {
     flexGrow: 1,
-    padding: 20,
-    paddingBottom: 96,
+    gap: 20,
+    padding: 18,
+    paddingBottom: 102,
+  },
+  appBar: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surface,
+    padding: 14,
+    shadowColor: AppTheme.shadow,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  brandLockup: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  brandMark: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 12,
+    backgroundColor: AppTheme.primarySoft,
+  },
+  brandText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  appName: {
+    color: AppTheme.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  appMeta: {
+    color: AppTheme.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  sessionPill: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 999,
+    backgroundColor: AppTheme.primarySoft,
+    paddingHorizontal: 11,
+  },
+  sessionPillText: {
+    color: AppTheme.primary,
+    fontSize: 12,
+    fontWeight: '900',
   },
   tabContent: {
     flex: 1,
     gap: 18,
   },
-  heroCard: {
-    gap: 12,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    padding: 22,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 4,
-  },
-  kicker: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    backgroundColor: '#DCFCE7',
-    color: '#15803D',
-    fontSize: 13,
-    fontWeight: '800',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
   title: {
-    color: '#132033',
+    color: AppTheme.text,
     fontSize: 30,
-    fontWeight: '800',
+    fontWeight: '900',
     lineHeight: 36,
   },
   subtitle: {
-    color: '#5A6B7D',
+    color: AppTheme.textSoft,
     fontSize: 16,
     lineHeight: 23,
   },
@@ -980,13 +1043,13 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   sectionTitle: {
-    color: '#132033',
+    color: AppTheme.text,
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   sectionSubtitle: {
     marginTop: 2,
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 14,
   },
   refreshButton: {
@@ -995,9 +1058,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
-    borderRadius: 14,
-    backgroundColor: '#EFF6FF',
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 12,
+    backgroundColor: AppTheme.primarySoft,
   },
   usersList: {
     gap: 14,
@@ -1005,10 +1068,15 @@ const styles = StyleSheet.create({
   userCard: {
     gap: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surface,
     padding: 16,
+    shadowColor: AppTheme.shadow,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
   },
   userHeader: {
     flexDirection: 'row',
@@ -1020,11 +1088,13 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
-    backgroundColor: '#DBEAFE',
+    borderWidth: 1,
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 12,
+    backgroundColor: AppTheme.primarySoft,
   },
   avatarText: {
-    color: '#1D4ED8',
+    color: AppTheme.primary,
     fontSize: 18,
     fontWeight: '900',
   },
@@ -1033,12 +1103,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   userEmail: {
-    color: '#132033',
+    color: AppTheme.text,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   userMeta: {
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 13,
     lineHeight: 18,
   },
@@ -1048,8 +1118,10 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     gap: 10,
-    borderRadius: 14,
-    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surfaceAlt,
     padding: 12,
   },
   infoText: {
@@ -1057,12 +1129,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   infoLabel: {
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   infoValue: {
-    color: '#1E293B',
+    color: AppTheme.text,
     fontSize: 15,
     lineHeight: 21,
   },
@@ -1070,45 +1142,49 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 156,
     marginTop: 8,
-    borderRadius: 14,
-    backgroundColor: '#E2E8F0',
+    borderRadius: 8,
+    backgroundColor: AppTheme.grid,
   },
   loadingCard: {
     alignItems: 'center',
     gap: 10,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surface,
     padding: 24,
   },
   loadingText: {
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 15,
   },
   errorBox: {
     borderWidth: 1,
-    borderColor: '#FECACA',
-    borderRadius: 16,
-    backgroundColor: '#FEF2F2',
+    borderColor: AppTheme.dangerBorder,
+    borderRadius: 8,
+    backgroundColor: AppTheme.dangerSoft,
     padding: 14,
   },
   errorText: {
-    color: '#B91C1C',
+    color: AppTheme.danger,
     fontSize: 14,
     lineHeight: 20,
   },
   emptyCard: {
     gap: 8,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surface,
     padding: 20,
   },
   emptyTitle: {
-    color: '#132033',
+    color: AppTheme.text,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   emptyText: {
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 15,
     lineHeight: 21,
   },
@@ -1117,15 +1193,29 @@ const styles = StyleSheet.create({
   },
   formCard: {
     gap: 16,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surface,
     padding: 20,
+    shadowColor: AppTheme.shadow,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
   },
   chartCard: {
     gap: 16,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surface,
     padding: 18,
+    shadowColor: AppTheme.shadow,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
   },
   chartHeader: {
     flexDirection: 'row',
@@ -1134,31 +1224,33 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   chartTitle: {
-    color: '#132033',
+    color: AppTheme.text,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   chartSubtitle: {
     marginTop: 2,
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 14,
   },
   chartBadge: {
     borderRadius: 999,
-    backgroundColor: '#DCFCE7',
+    backgroundColor: AppTheme.successSoft,
+    borderWidth: 1,
+    borderColor: AppTheme.successBorder,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
   chartBadgeText: {
-    color: '#15803D',
+    color: AppTheme.primary,
     fontSize: 14,
     fontWeight: '900',
   },
   rangeSelector: {
     flexDirection: 'row',
     gap: 6,
-    borderRadius: 14,
-    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    backgroundColor: AppTheme.primarySoft,
     padding: 4,
   },
   rangeButton: {
@@ -1166,13 +1258,13 @@ const styles = StyleSheet.create({
     minHeight: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 11,
+    borderRadius: 8,
   },
   rangeButtonActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#0F172A',
+    backgroundColor: AppTheme.primary,
+    shadowColor: AppTheme.shadow,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.12,
     shadowRadius: 5,
     elevation: 2,
   },
@@ -1180,12 +1272,12 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   rangeButtonText: {
-    color: '#64748B',
+    color: AppTheme.textSoft,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   rangeButtonTextActive: {
-    color: '#2563EB',
+    color: AppTheme.surface,
   },
   chartArea: {
     flexDirection: 'row',
@@ -1198,39 +1290,41 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
   },
   yAxisLabel: {
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '900',
     textAlign: 'right',
   },
   chartCanvas: {
     flex: 1,
     height: 160,
     overflow: 'hidden',
-    borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surfaceAlt,
   },
   chartGridLine: {
     position: 'absolute',
     right: 14,
     left: 14,
     height: 1,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: AppTheme.grid,
   },
   chartLine: {
     position: 'absolute',
     height: 4,
     borderRadius: 999,
-    backgroundColor: '#2563EB',
+    backgroundColor: AppTheme.primary,
   },
   chartDot: {
     position: 'absolute',
     width: 12,
     height: 12,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: AppTheme.surface,
     borderRadius: 999,
-    backgroundColor: '#2563EB',
+    backgroundColor: AppTheme.primary,
   },
   chartFooter: {
     flexDirection: 'row',
@@ -1238,38 +1332,40 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   chartFooterText: {
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
   chartTrend: {
     marginTop: 10,
-    color: '#334155',
+    color: AppTheme.textSoft,
     fontSize: 14,
     lineHeight: 20,
   },
   chartEmpty: {
     alignItems: 'center',
     gap: 8,
-    borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surfaceAlt,
     padding: 22,
   },
   field: {
     gap: 8,
   },
   label: {
-    color: '#334155',
+    color: AppTheme.textSoft,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   input: {
     minHeight: 52,
     borderWidth: 1,
-    borderColor: '#D7E0EA',
-    borderRadius: 14,
-    backgroundColor: '#F8FAFC',
-    color: '#132033',
+    borderColor: AppTheme.border,
+    borderRadius: 10,
+    backgroundColor: AppTheme.surfaceAlt,
+    color: AppTheme.text,
     fontSize: 16,
     paddingHorizontal: 16,
   },
@@ -1285,29 +1381,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
-    borderRadius: 14,
-    backgroundColor: '#EFF6FF',
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 10,
+    backgroundColor: AppTheme.primarySoft,
   },
   photoActionButtonPressed: {
     opacity: 0.75,
   },
   photoActionButtonText: {
-    color: '#2563EB',
+    color: AppTheme.primary,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   photoPreview: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surfaceAlt,
   },
   photoPreviewImage: {
     width: '100%',
     aspectRatio: 4 / 3,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: AppTheme.grid,
   },
   removePhotoButton: {
     minHeight: 44,
@@ -1316,16 +1412,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    backgroundColor: '#FFFFFF',
+    borderTopColor: AppTheme.border,
+    backgroundColor: AppTheme.surface,
   },
   removePhotoButtonPressed: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: AppTheme.dangerSoft,
   },
   removePhotoButtonText: {
-    color: '#B91C1C',
+    color: AppTheme.danger,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   photoPlaceholder: {
     minHeight: 116,
@@ -1334,46 +1430,51 @@ const styles = StyleSheet.create({
     gap: 8,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: '#CBD5E1',
-    borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surfaceAlt,
   },
   photoPlaceholderText: {
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   primaryButton: {
     minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
-    backgroundColor: '#2563EB',
+    borderRadius: 10,
+    backgroundColor: AppTheme.primary,
+    shadowColor: AppTheme.shadow,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
   primaryButtonPressed: {
     opacity: 0.85,
   },
   primaryButtonText: {
-    color: '#FFFFFF',
+    color: AppTheme.surface,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   signOutButton: {
     minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#2563EB',
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 10,
+    backgroundColor: AppTheme.surface,
   },
   signOutButtonPressed: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: AppTheme.primarySoft,
   },
   signOutButtonText: {
-    color: '#2563EB',
+    color: AppTheme.primary,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -1386,13 +1487,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    borderColor: AppTheme.border,
+    borderRadius: 18,
+    backgroundColor: AppTheme.surface,
     padding: 8,
-    shadowColor: '#0F172A',
+    shadowColor: AppTheme.shadow,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.14,
     shadowRadius: 20,
     elevation: 8,
   },
@@ -1402,21 +1503,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    borderRadius: 16,
+    borderRadius: 12,
   },
   tabButtonActive: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: AppTheme.primarySoft,
   },
   tabButtonPressed: {
     opacity: 0.75,
   },
   tabButtonText: {
-    color: '#64748B',
+    color: AppTheme.textMuted,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   tabButtonTextActive: {
-    color: '#2563EB',
+    color: AppTheme.primary,
   },
 });
 
@@ -1582,7 +1683,7 @@ function WeightChart({ weights }: { weights: WeightRow[] }) {
         </View>
       ) : (
         <View style={styles.chartEmpty}>
-          <MaterialCommunityIcons name="chart-line" size={30} color="#94A3B8" />
+          <MaterialCommunityIcons name="chart-line" size={30} color={AppTheme.textMuted} />
           <Text style={styles.emptyTitle}>Pas encore de courbe</Text>
           <Text style={styles.emptyText}>
             Ajoute ton premier poids pour commencer ton suivi.

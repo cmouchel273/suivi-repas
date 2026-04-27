@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import 'react-native-reanimated';
 
+import { AppTheme } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
@@ -35,7 +36,7 @@ export default function RootLayout() {
           name="description"
           content="Suivi partagé des repas, calories, protéines, photos et poids."
         />
-        <meta name="theme-color" content="#2563EB" />
+        <meta name="theme-color" content={AppTheme.primary} />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="Suivi Repas" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />

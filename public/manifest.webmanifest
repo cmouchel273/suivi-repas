@@ -7,8 +7,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#F3F7FB",
-  "theme_color": "#2563EB",
+  "background_color": "#F3F8F4",
+  "theme_color": "#00561b",
   "categories": ["health", "fitness", "food"],
   "icons": [
     {

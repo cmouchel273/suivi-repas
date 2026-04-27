@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { AppTheme } from '@/constants/theme';
 import { supabase } from '@/src/lib/supabase';
 
 import Home from '../home';
@@ -54,7 +55,7 @@ export default function Index() {
   if (isCheckingSession) {
     return (
       <View style={styles.loadingScreen}>
-        <ActivityIndicator color="#2563EB" size="large" />
+        <ActivityIndicator color={AppTheme.primary} size="large" />
       </View>
     );
   }
@@ -71,6 +72,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F3F7FB',
+    backgroundColor: AppTheme.background,
   },
 });
