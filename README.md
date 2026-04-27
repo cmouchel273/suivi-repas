@@ -35,6 +35,16 @@ npm run reset-project
 
 This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
+## PWA
+
+Pour générer la Progressive Web App, lance :
+
+```bash
+npm run build:web
+```
+
+Le build statique est généré dans le dossier **dist**. Déploie ce dossier sur un hébergement HTTPS pour que l'installation PWA et le service worker fonctionnent correctement.
+
 ## Learn more
 
 To learn more about developing your project with Expo, look at the following resources:

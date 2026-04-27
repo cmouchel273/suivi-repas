@@ -29,6 +29,13 @@
     "plugins": [
       "expo-router",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Autorise Suivi Repas à choisir une photo de ton repas.",
+          "cameraPermission": "Autorise Suivi Repas à prendre une photo de ton repas."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

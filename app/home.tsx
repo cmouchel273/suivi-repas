@@ -1,4 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import type { Session } from '@supabase/supabase-js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -40,6 +42,8 @@ type MealRow = {
   name: string;
   calories: number;
   proteins: number;
+  photo_path: string | null;
+  photo_url?: string | null;
   created_at: string;
 };
 
@@ -91,6 +95,87 @@ const WEIGHT_RANGES: WeightRangeOption[] = [
   { key: 'all', label: 'Tout', days: null },
 ];
 
+const MEAL_PHOTOS_BUCKET = 'meal-photos';
+const PHOTO_SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+const getPhotoExtension = (asset: ImagePicker.ImagePickerAsset) => {
+  const mimeExtension = asset.mimeType?.split('/')[1]?.split(';')[0];
+
+  if (mimeExtension) {
+    return mimeExtension === 'jpeg' ? 'jpg' : mimeExtension;
+  }
+
+  const fileMatch = asset.fileName?.match(/\.([a-z0-9]+)$/i);
+  const uriMatch = asset.uri.match(/\.([a-z0-9]+)(?:\?|#|$)/i);
+
+  return (fileMatch?.[1] ?? uriMatch?.[1] ?? 'jpg').toLowerCase();
+};
+
+const getPhotoContentType = (asset: ImagePicker.ImagePickerAsset) => {
+  if (asset.mimeType) {
+    if (asset.mimeType === 'image/jpg' || asset.mimeType === 'image/pjpeg') {
+      return 'image/jpeg';
+    }
+
+    return asset.mimeType;
+  }
+
+  const extension = getPhotoExtension(asset);
+
+  if (extension === 'png') {
+    return 'image/png';
+  }
+
+  if (extension === 'webp') {
+    return 'image/webp';
+  }
+
+  if (extension === 'heic' || extension === 'heif') {
+    return 'image/heic';
+  }
+
+  return 'image/jpeg';
+};
+
+const createSignedMealPhotoUrl = async (photoPath?: string | null) => {
+  if (!photoPath) {
+    return null;
+  }
+
+  const { data, error } = await supabase.storage
+    .from(MEAL_PHOTOS_BUCKET)
+    .createSignedUrl(photoPath, PHOTO_SIGNED_URL_TTL_SECONDS);
+
+  if (error) {
+    console.log('Erreur création URL signée photo repas', error);
+    return null;
+  }
+
+  return data.signedUrl;
+};
+
+const uploadMealPhoto = async (asset: ImagePicker.ImagePickerAsset, userId: string) => {
+  const extension = getPhotoExtension(asset);
+  const photoPath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+  const response = await fetch(asset.uri);
+
+  if (!response.ok) {
+    throw new Error("La photo n'a pas pu être lue.");
+  }
+
+  const photoData = asset.file ?? (await response.arrayBuffer());
+  const { error } = await supabase.storage.from(MEAL_PHOTOS_BUCKET).upload(photoPath, photoData, {
+    contentType: getPhotoContentType(asset),
+    upsert: false,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return photoPath;
+};
+
 const formatDate = (value?: string | null) => {
   if (!value) {
     return 'Aucune donnée';
@@ -127,6 +212,7 @@ export default function Home({ session }: HomeProps) {
   const [mealName, setMealName] = useState('');
   const [mealCalories, setMealCalories] = useState('');
   const [mealProteins, setMealProteins] = useState('');
+  const [mealPhoto, setMealPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [weight, setWeight] = useState('');
 
   const userId = session?.user.id;
@@ -178,7 +264,7 @@ export default function Home({ session }: HomeProps) {
         supabase.from('profiles').select('user_id,email,updated_at').order('email'),
         supabase
           .from('meals')
-          .select('id,user_id,user_email,name,calories,proteins,created_at')
+          .select('id,user_id,user_email,name,calories,proteins,photo_path,created_at')
           .order('created_at', { ascending: false })
           .limit(300),
         supabase
@@ -272,6 +358,18 @@ export default function Home({ session }: HomeProps) {
         }
       });
 
+      await Promise.all(
+        Array.from(summaries.values()).map(async (summary) => {
+          if (!summary.latestMeal?.photo_path) {
+            return;
+          }
+
+          summary.latestMeal.photo_url = await createSignedMealPhotoUrl(
+            summary.latestMeal.photo_path
+          );
+        })
+      );
+
       const nextUsers = Array.from(summaries.values()).sort((a, b) => {
         const aTime = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
         const bTime = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
@@ -347,6 +445,46 @@ export default function Home({ session }: HomeProps) {
     }
   };
 
+  const handlePickMealPhoto = async (source: 'camera' | 'library') => {
+    try {
+      const permission =
+        source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          'Permission nécessaire',
+          source === 'camera'
+            ? "Autorise l'appareil photo pour prendre une photo de ton repas."
+            : "Autorise l'accès aux photos pour choisir une photo de ton repas."
+        );
+        return;
+      }
+
+      const pickerOptions: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.75,
+      };
+      const result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync({
+              ...pickerOptions,
+              cameraType: ImagePicker.CameraType.back,
+            })
+          : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+
+      if (!result.canceled) {
+        setMealPhoto(result.assets[0] ?? null);
+      }
+    } catch (error) {
+      console.log('Erreur sélection photo repas', error);
+      Alert.alert('Photo indisponible', getErrorMessage(error));
+    }
+  };
+
   const handleSaveMeal = async () => {
     if (!userId) {
       Alert.alert('Session manquante', "Reconnecte-toi avant d'ajouter un repas.");
@@ -377,16 +515,24 @@ export default function Home({ session }: HomeProps) {
       name: mealName.trim(),
       calories,
       proteins,
+      photo_path: null as string | null,
     };
 
-    console.log('Ajout repas Supabase', nextMeal);
     setSavingAction('meal');
 
     try {
+      if (mealPhoto) {
+        nextMeal.photo_path = await uploadMealPhoto(mealPhoto, userId);
+      }
+
+      console.log('Ajout repas Supabase', nextMeal);
       const { error } = await supabase.from('meals').insert(nextMeal);
 
       if (error) {
         console.log('Erreur Supabase insert meal', error);
+        if (nextMeal.photo_path) {
+          await supabase.storage.from(MEAL_PHOTOS_BUCKET).remove([nextMeal.photo_path]);
+        }
         Alert.alert('Repas non enregistré', error.message);
         return;
       }
@@ -395,11 +541,15 @@ export default function Home({ session }: HomeProps) {
       setMealName('');
       setMealCalories('');
       setMealProteins('');
+      setMealPhoto(null);
       Alert.alert('Repas ajouté', "Le repas est visible sur l'accueil.");
       setActiveTab('home');
       await loadDashboard();
     } catch (error) {
       console.log('Erreur inattendue insert meal', error);
+      if (nextMeal.photo_path) {
+        await supabase.storage.from(MEAL_PHOTOS_BUCKET).remove([nextMeal.photo_path]);
+      }
       Alert.alert('Repas non enregistré', getErrorMessage(error));
     } finally {
       setSavingAction(null);
@@ -474,6 +624,13 @@ export default function Home({ session }: HomeProps) {
                 ? `${user.latestMeal.name} - ${user.latestMeal.calories} kcal - ${user.latestMeal.proteins} g prot.`
                 : 'Aucun repas'}
             </Text>
+            {user.latestMeal?.photo_url ? (
+              <Image
+                source={{ uri: user.latestMeal.photo_url }}
+                style={styles.mealPhoto}
+                contentFit="cover"
+              />
+            ) : null}
           </View>
         </View>
 
@@ -599,6 +756,60 @@ export default function Home({ session }: HomeProps) {
             placeholderTextColor="#8A96A8"
             style={styles.input}
           />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Photo du repas</Text>
+          <View style={styles.photoActions}>
+            <Pressable
+              disabled={isSavingMeal}
+              onPress={() => void handlePickMealPhoto('camera')}
+              style={({ pressed }) => [
+                styles.photoActionButton,
+                pressed && styles.photoActionButtonPressed,
+                isSavingMeal && styles.buttonDisabled,
+              ]}>
+              <MaterialCommunityIcons name="camera-outline" size={19} color="#2563EB" />
+              <Text style={styles.photoActionButtonText}>Prendre</Text>
+            </Pressable>
+            <Pressable
+              disabled={isSavingMeal}
+              onPress={() => void handlePickMealPhoto('library')}
+              style={({ pressed }) => [
+                styles.photoActionButton,
+                pressed && styles.photoActionButtonPressed,
+                isSavingMeal && styles.buttonDisabled,
+              ]}>
+              <MaterialCommunityIcons name="image-outline" size={19} color="#2563EB" />
+              <Text style={styles.photoActionButtonText}>Choisir</Text>
+            </Pressable>
+          </View>
+
+          {mealPhoto ? (
+            <View style={styles.photoPreview}>
+              <Image
+                source={{ uri: mealPhoto.uri }}
+                style={styles.photoPreviewImage}
+                contentFit="cover"
+              />
+              <Pressable
+                disabled={isSavingMeal}
+                onPress={() => setMealPhoto(null)}
+                style={({ pressed }) => [
+                  styles.removePhotoButton,
+                  pressed && styles.removePhotoButtonPressed,
+                  isSavingMeal && styles.buttonDisabled,
+                ]}>
+                <MaterialCommunityIcons name="close" size={18} color="#B91C1C" />
+                <Text style={styles.removePhotoButtonText}>Retirer</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <MaterialCommunityIcons name="image-plus" size={26} color="#94A3B8" />
+              <Text style={styles.photoPlaceholderText}>Aucune photo sélectionnée</Text>
+            </View>
+          )}
         </View>
 
         <Pressable
@@ -855,6 +1066,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
   },
+  mealPhoto: {
+    width: '100%',
+    height: 156,
+    marginTop: 8,
+    borderRadius: 14,
+    backgroundColor: '#E2E8F0',
+  },
   loadingCard: {
     alignItems: 'center',
     gap: 10,
@@ -1054,6 +1272,76 @@ const styles = StyleSheet.create({
     color: '#132033',
     fontSize: 16,
     paddingHorizontal: 16,
+  },
+  photoActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  photoActionButton: {
+    flex: 1,
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 14,
+    backgroundColor: '#EFF6FF',
+  },
+  photoActionButtonPressed: {
+    opacity: 0.75,
+  },
+  photoActionButtonText: {
+    color: '#2563EB',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  photoPreview: {
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+  },
+  photoPreviewImage: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: '#E2E8F0',
+  },
+  removePhotoButton: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+  },
+  removePhotoButtonPressed: {
+    backgroundColor: '#FEF2F2',
+  },
+  removePhotoButtonText: {
+    color: '#B91C1C',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  photoPlaceholder: {
+    minHeight: 116,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#CBD5E1',
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+  },
+  photoPlaceholderText: {
+    color: '#64748B',
+    fontSize: 14,
+    fontWeight: '700',
   },
   primaryButton: {
     minHeight: 52,
