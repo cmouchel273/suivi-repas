@@ -39,7 +39,7 @@ export default function Login({ onAuthSuccess }: LoginProps) {
   const isSignUpLoading = loadingAction === 'signUp';
 
   const showError = (title: string, message: string) => {
-    console.log('Erreur affichee a l utilisateur', { title, message });
+    console.log("Erreur affichée à l'utilisateur", { title, message });
     setFeedback({ type: 'error', message });
     Alert.alert(title, message);
   };
@@ -53,7 +53,7 @@ export default function Login({ onAuthSuccess }: LoginProps) {
     if (action === 'signUp' && password.length < 6) {
       showError(
         'Mot de passe trop court',
-        'Choisis un mot de passe de 6 caract\u00e8res minimum.'
+        'Choisis un mot de passe de 6 caractères minimum.'
       );
       return false;
     }
@@ -84,18 +84,18 @@ export default function Login({ onAuthSuccess }: LoginProps) {
         return;
       }
 
-      console.log('Connexion reussie', {
+      console.log('Connexion réussie', {
         email: data.user?.email,
         userId: data.user?.id,
         hasSession: Boolean(data.session),
       });
 
-      setFeedback({ type: 'success', message: 'Connexion r\u00e9ussie.' });
+      setFeedback({ type: 'success', message: 'Connexion réussie.' });
 
       if (data.session) {
         onAuthSuccess?.(data.session);
       } else {
-        Alert.alert('Connexion r\u00e9ussie', 'Session en cours de r\u00e9cup\u00e9ration...');
+        Alert.alert('Connexion réussie', 'Session en cours de récupération...');
       }
     } catch (error) {
       console.log('Erreur inattendue pendant la connexion', error);
@@ -106,7 +106,7 @@ export default function Login({ onAuthSuccess }: LoginProps) {
   };
 
   const handleSignUp = async () => {
-    console.log('Tentative d inscription', { email: trimmedEmail });
+    console.log("Tentative d'inscription", { email: trimmedEmail });
     setFeedback(null);
 
     if (!validateForm('signUp')) {
@@ -114,7 +114,7 @@ export default function Login({ onAuthSuccess }: LoginProps) {
     }
 
     setLoadingAction('signUp');
-    setFeedback({ type: 'info', message: 'Cr\u00e9ation du compte en cours...' });
+    setFeedback({ type: 'info', message: 'Création du compte en cours...' });
 
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -128,25 +128,25 @@ export default function Login({ onAuthSuccess }: LoginProps) {
         return;
       }
 
-      console.log('Inscription reussie', {
+      console.log('Inscription réussie', {
         email: data.user?.email,
         userId: data.user?.id,
         hasSession: Boolean(data.session),
       });
 
       if (data.session) {
-        setFeedback({ type: 'success', message: 'Compte cr\u00e9\u00e9, connexion r\u00e9ussie.' });
+        setFeedback({ type: 'success', message: 'Compte créé, connexion réussie.' });
         onAuthSuccess?.(data.session);
         return;
       }
 
       const message =
-        'Compte cr\u00e9\u00e9. Si Supabase demande une confirmation email, confirme ton adresse puis connecte-toi.';
+        'Compte créé. Si Supabase demande une confirmation email, confirme ton adresse puis connecte-toi.';
 
       setFeedback({ type: 'success', message });
-      Alert.alert('Compte cr\u00e9\u00e9', message);
+      Alert.alert('Compte créé', message);
     } catch (error) {
-      console.log('Erreur inattendue pendant l inscription', error);
+      console.log("Erreur inattendue pendant l'inscription", error);
       showError('Inscription impossible', 'Une erreur inattendue est survenue.');
     } finally {
       setLoadingAction(null);
@@ -242,7 +242,7 @@ export default function Login({ onAuthSuccess }: LoginProps) {
               {isSignUpLoading ? (
                 <ActivityIndicator color="#2563EB" />
               ) : (
-                <Text style={styles.secondaryButtonText}>Cr\u00e9er un compte</Text>
+                <Text style={styles.secondaryButtonText}>Créer un compte</Text>
               )}
             </Pressable>
           </View>

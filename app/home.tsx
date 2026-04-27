@@ -87,13 +87,13 @@ const TABS: TabItem[] = [
 const WEIGHT_RANGES: WeightRangeOption[] = [
   { key: 'week', label: 'Semaine', days: 7 },
   { key: 'month', label: 'Mois', days: 30 },
-  { key: 'year', label: 'Ann\u00e9e', days: 365 },
+  { key: 'year', label: 'Année', days: 365 },
   { key: 'all', label: 'Tout', days: null },
 ];
 
 const formatDate = (value?: string | null) => {
   if (!value) {
-    return 'Aucune donn\u00e9e';
+    return 'Aucune donnée';
   }
 
   return new Intl.DateTimeFormat('fr-FR', {
@@ -169,7 +169,7 @@ export default function Home({ session }: HomeProps) {
       return;
     }
 
-    console.log('Chargement des dernieres informations de tous les utilisateurs');
+    console.log('Chargement des dernières informations de tous les utilisateurs');
     setIsDashboardLoading(true);
     setDashboardError(null);
 
@@ -287,7 +287,7 @@ export default function Home({ session }: HomeProps) {
         return a.email.localeCompare(b.email);
       });
 
-      console.log('Dashboard utilisateurs charge', { count: nextUsers.length });
+      console.log('Dashboard utilisateurs chargé', { count: nextUsers.length });
       setUsers(nextUsers);
       setWeightHistory(currentUserWeights);
     } catch (error) {
@@ -295,7 +295,7 @@ export default function Home({ session }: HomeProps) {
 
       console.log('Erreur chargement dashboard Supabase', error);
       setDashboardError(
-        `${message}. Si les tables n'existent pas encore, execute le fichier supabase/schema.sql dans Supabase.`
+        `${message}. Si les tables n'existent pas encore, exécute le fichier supabase/schema.sql dans Supabase.`
       );
     } finally {
       setIsDashboardLoading(false);
@@ -326,7 +326,7 @@ export default function Home({ session }: HomeProps) {
   }, [loadDashboard]);
 
   const handleSignOut = async () => {
-    console.log('Tentative de deconnexion');
+    console.log('Tentative de déconnexion');
     setIsSigningOut(true);
 
     try {
@@ -334,14 +334,14 @@ export default function Home({ session }: HomeProps) {
 
       if (error) {
         console.log('Erreur Supabase signOut', error);
-        Alert.alert('D\u00e9connexion impossible', error.message);
+        Alert.alert('Déconnexion impossible', error.message);
         return;
       }
 
-      console.log('Deconnexion reussie');
+      console.log('Déconnexion réussie');
     } catch (error) {
-      console.log('Erreur inattendue pendant la deconnexion', error);
-      Alert.alert('D\u00e9connexion impossible', 'Une erreur inattendue est survenue.');
+      console.log('Erreur inattendue pendant la déconnexion', error);
+      Alert.alert('Déconnexion impossible', 'Une erreur inattendue est survenue.');
     } finally {
       setIsSigningOut(false);
     }
@@ -349,7 +349,7 @@ export default function Home({ session }: HomeProps) {
 
   const handleSaveMeal = async () => {
     if (!userId) {
-      Alert.alert('Session manquante', 'Reconnecte-toi avant d ajouter un repas.');
+      Alert.alert('Session manquante', "Reconnecte-toi avant d'ajouter un repas.");
       return;
     }
 
@@ -367,7 +367,7 @@ export default function Home({ session }: HomeProps) {
     }
 
     if (!Number.isFinite(proteins) || proteins < 0) {
-      Alert.alert('Prot\u00e9ines invalides', 'Renseigne un nombre de prot\u00e9ines valide.');
+      Alert.alert('Protéines invalides', 'Renseigne un nombre de protéines valide.');
       return;
     }
 
@@ -387,20 +387,20 @@ export default function Home({ session }: HomeProps) {
 
       if (error) {
         console.log('Erreur Supabase insert meal', error);
-        Alert.alert('Repas non enregistr\u00e9', error.message);
+        Alert.alert('Repas non enregistré', error.message);
         return;
       }
 
-      console.log('Repas Supabase ajoute');
+      console.log('Repas Supabase ajouté');
       setMealName('');
       setMealCalories('');
       setMealProteins('');
-      Alert.alert('Repas ajout\u00e9', 'Le repas est visible sur l accueil.');
+      Alert.alert('Repas ajouté', "Le repas est visible sur l'accueil.");
       setActiveTab('home');
       await loadDashboard();
     } catch (error) {
       console.log('Erreur inattendue insert meal', error);
-      Alert.alert('Repas non enregistr\u00e9', getErrorMessage(error));
+      Alert.alert('Repas non enregistré', getErrorMessage(error));
     } finally {
       setSavingAction(null);
     }
@@ -408,7 +408,7 @@ export default function Home({ session }: HomeProps) {
 
   const handleSaveWeight = async () => {
     if (!userId) {
-      Alert.alert('Session manquante', 'Reconnecte-toi avant d ajouter un poids.');
+      Alert.alert('Session manquante', "Reconnecte-toi avant d'ajouter un poids.");
       return;
     }
 
@@ -433,18 +433,18 @@ export default function Home({ session }: HomeProps) {
 
       if (error) {
         console.log('Erreur Supabase insert weight', error);
-        Alert.alert('Poids non enregistr\u00e9', error.message);
+        Alert.alert('Poids non enregistré', error.message);
         return;
       }
 
-      console.log('Poids Supabase ajoute');
+      console.log('Poids Supabase ajouté');
       setWeight('');
-      Alert.alert('Poids ajout\u00e9', 'Le poids est visible sur l accueil.');
+      Alert.alert('Poids ajouté', "Le poids est visible sur l'accueil.");
       setActiveTab('home');
       await loadDashboard();
     } catch (error) {
       console.log('Erreur inattendue insert weight', error);
-      Alert.alert('Poids non enregistr\u00e9', getErrorMessage(error));
+      Alert.alert('Poids non enregistré', getErrorMessage(error));
     } finally {
       setSavingAction(null);
     }
@@ -496,7 +496,7 @@ export default function Home({ session }: HomeProps) {
         <Text style={styles.kicker}>Groupe</Text>
         <Text style={styles.title}>Accueil</Text>
         <Text style={styles.subtitle}>
-          Les derni\u00e8res informations de tous les utilisateurs apparaissent ici.
+          Les dernières informations de tous les utilisateurs apparaissent ici.
         </Text>
       </View>
 
@@ -547,7 +547,7 @@ export default function Home({ session }: HomeProps) {
         {isSigningOut ? (
           <ActivityIndicator color="#2563EB" />
         ) : (
-          <Text style={styles.signOutButtonText}>Se d\u00e9connecter</Text>
+          <Text style={styles.signOutButtonText}>Se déconnecter</Text>
         )}
       </Pressable>
     </View>
@@ -558,7 +558,7 @@ export default function Home({ session }: HomeProps) {
       <View style={styles.formHeader}>
         <Text style={styles.title}>Repas du jour</Text>
         <Text style={styles.subtitle}>
-          Ajoute ton repas avec ses calories et prot\u00e9ines. Il sera visible par les membres.
+          Ajoute ton repas avec ses calories et protéines. Il sera visible par les membres.
         </Text>
       </View>
 
@@ -589,7 +589,7 @@ export default function Home({ session }: HomeProps) {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Prot\u00e9ines (g)</Text>
+          <Text style={styles.label}>Protéines (g)</Text>
           <TextInput
             value={mealProteins}
             onChangeText={setMealProteins}
@@ -624,7 +624,7 @@ export default function Home({ session }: HomeProps) {
       <View style={styles.formHeader}>
         <Text style={styles.title}>Poids du jour</Text>
         <Text style={styles.subtitle}>
-          Ton poids sera enregistr\u00e9 et visible dans le suivi du groupe.
+          Ton poids sera enregistré et visible dans le suivi du groupe.
         </Text>
       </View>
 
@@ -1191,7 +1191,7 @@ function WeightChart({ weights }: { weights: WeightRow[] }) {
         <View>
           <Text style={styles.chartTitle}>Courbe du poids</Text>
           <Text style={styles.chartSubtitle}>
-            {points.length} mesure{points.length > 1 ? 's' : ''} sur la p\u00e9riode
+            {points.length} mesure{points.length > 1 ? 's' : ''} sur la période
           </Text>
         </View>
         <View style={styles.chartBadge}>
@@ -1286,10 +1286,10 @@ function WeightChart({ weights }: { weights: WeightRow[] }) {
 
           <Text style={styles.chartTrend}>
             {trend === null
-              ? 'Ajoute une deuxi\u00e8me mesure pour voir la tendance.'
+              ? 'Ajoute une deuxième mesure pour voir la tendance.'
               : trend === 0
-                ? 'Stable depuis la derni\u00e8re mesure.'
-                : `${trend > 0 ? '+' : ''}${trend} kg depuis la derni\u00e8re mesure.`}
+                ? 'Stable depuis la dernière mesure.'
+                : `${trend > 0 ? '+' : ''}${trend} kg depuis la dernière mesure.`}
           </Text>
         </View>
       ) : (
