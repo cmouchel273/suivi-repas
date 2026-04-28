@@ -35,8 +35,8 @@ export const DEFAULT_NOTIFICATION_REMINDERS: DefaultNotificationReminder[] = [
     kind: 'weight',
     title: 'Rappel ou rat pelle',
     body: 'Pense à secher mon pote.',
-    hour: 21,
-    minute: 45,
+    hour: 22,
+    minute: 55,
   },
 ];
 
