@@ -45,6 +45,36 @@ npm run build:web
 
 Le build statique est généré dans le dossier **dist**. Déploie ce dossier sur un hébergement HTTPS pour que l'installation PWA et le service worker fonctionnent correctement.
 
+### Notifications PWA
+
+Les notifications PWA utilisent le Web Push du navigateur, pas `expo-notifications`. Pour activer les rappels quand la PWA est fermée :
+
+1. Applique `supabase/schema.sql` ou la migration `supabase/migrations/20260428_add_web_push_notifications.sql`.
+2. Déploie la fonction :
+
+   ```bash
+   supabase functions deploy send-reminders --no-verify-jwt
+   ```
+
+3. Ajoute les secrets Supabase avec les valeurs de ton `.env` local :
+
+   ```bash
+   supabase secrets set WEB_PUSH_VAPID_PUBLIC_KEY=... WEB_PUSH_VAPID_PRIVATE_KEY=... WEB_PUSH_SUBJECT=... REMINDER_FUNCTION_SECRET=...
+   ```
+
+4. Appelle `send-reminders` toutes les 5 minutes avec un cron Supabase (`supabase/web_push_cron.sql`) ou un cron externe :
+
+   ```bash
+   curl -X POST "https://<project-ref>.supabase.co/functions/v1/send-reminders" \
+     -H "Authorization: Bearer <REMINDER_FUNCTION_SECRET>" \
+     -H "Content-Type: application/json" \
+     -d "{}"
+   ```
+
+Pour tester tout de suite sans attendre l'heure d'un rappel, envoie `{"force":true}` dans le body.
+
+Sur iOS, les Web Push fonctionnent pour une PWA installée sur l'écran d'accueil.
+
 ## Learn more
 
 To learn more about developing your project with Expo, look at the following resources:

@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { AppTheme } from '@/constants/theme';
+import { supabase } from '@/src/lib/supabase';
 
 export type DefaultNotificationReminder = {
   id: string;
@@ -24,47 +25,61 @@ type ScheduledDefaultReminders = {
   notificationIds: string[];
 };
 
+const NOTIFICATION_LOG_PREFIX = '[notifications]';
+const WEB_PUSH_SERVICE_WORKER_PATH = '/service-worker.js';
+const WEB_PUSH_VAPID_PUBLIC_KEY = process.env.EXPO_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY;
+
 export const DEFAULT_NOTIFICATION_REMINDERS: DefaultNotificationReminder[] = [
   {
     id: 'weight-morning',
     kind: 'weight',
-    title: 'Pense à niquer ta mère.',
-    body: 'Pense à niquer ta mère.',
-    hour: 20,
-    minute: 30,
+    title: 'Rappel ou rat pelle',
+    body: 'Pense à secher mon pote.',
+    hour: 21,
+    minute: 45,
   },
-  // {
-  //   id: 'meal-lunch',
-  //   kind: 'meal',
-  //   title: 'Rappel repas',
-  //   body: 'Pense à entrer ton repas du midi.',
-  //   hour: 13,
-  //   minute: 0,
-  // },
-  // {
-  //   id: 'meal-evening',
-  //   kind: 'meal',
-  //   title: 'Rappel repas',
-  //   body: 'Pense à entrer ton repas du soir.',
-  //   hour: 20,
-  //   minute: 30,
-  // },
 ];
 
 const SCHEDULED_REMINDERS_STORAGE_KEY = 'suivi-repas:default-notification-reminders:v1';
 const REMINDER_CHANNEL_ID = 'suivi-repas-reminders';
 const DEFAULT_REMINDERS_SIGNATURE = DEFAULT_NOTIFICATION_REMINDERS.map(
-  (reminder) => `${reminder.id}:${reminder.hour}:${reminder.minute}`
+  (reminder) =>
+    `${reminder.id}:${reminder.title}:${reminder.body}:${reminder.hour}:${reminder.minute}`
 ).join('|');
 
 let hasConfiguredNotificationHandler = false;
 
-export const isNotificationsSupported = () => Platform.OS === 'android' || Platform.OS === 'ios';
+const isNativeNotificationsSupported = () => Platform.OS === 'android' || Platform.OS === 'ios';
+
+const isWebPushSupported = () =>
+  Platform.OS === 'web' &&
+  typeof window !== 'undefined' &&
+  typeof navigator !== 'undefined' &&
+  'Notification' in window &&
+  'serviceWorker' in navigator &&
+  'PushManager' in window;
+
+export const isNotificationsSupported = () =>
+  isNativeNotificationsSupported() || isWebPushSupported();
 
 export const configureNotificationHandler = () => {
-  if (hasConfiguredNotificationHandler || !isNotificationsSupported()) {
+  if (Platform.OS === 'web') {
+    console.log(`${NOTIFICATION_LOG_PREFIX} handler web service worker`, {
+      supported: isWebPushSupported(),
+    });
     return;
   }
+
+  if (hasConfiguredNotificationHandler || !isNativeNotificationsSupported()) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} handler ignore`, {
+      alreadyConfigured: hasConfiguredNotificationHandler,
+      platform: Platform.OS,
+      supported: isNativeNotificationsSupported(),
+    });
+    return;
+  }
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} handler configure`, { platform: Platform.OS });
 
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -80,8 +95,13 @@ export const configureNotificationHandler = () => {
 
 export const setupNotificationChannelAsync = async () => {
   if (Platform.OS !== 'android') {
+    console.log(`${NOTIFICATION_LOG_PREFIX} channel skip`, { platform: Platform.OS });
     return;
   }
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} channel setup start`, {
+    channelId: REMINDER_CHANNEL_ID,
+  });
 
   await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL_ID, {
     name: 'Rappels Suivi Repas',
@@ -90,6 +110,239 @@ export const setupNotificationChannelAsync = async () => {
     vibrationPattern: [0, 250, 250, 250],
     lightColor: AppTheme.primary,
     sound: 'default',
+  });
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} channel setup done`, {
+    channelId: REMINDER_CHANNEL_ID,
+  });
+};
+
+const getWebNotificationPermissionState = (): NotificationPermissionState => {
+  if (!isWebPushSupported()) {
+    return {
+      supported: false,
+      granted: false,
+      canAskAgain: false,
+    };
+  }
+
+  return {
+    supported: true,
+    granted: window.Notification.permission === 'granted',
+    canAskAgain: window.Notification.permission !== 'denied',
+  };
+};
+
+const registerWebServiceWorkerAsync = async () => {
+  if (!isWebPushSupported()) {
+    throw new Error('Les notifications PWA ne sont pas supportées par ce navigateur.');
+  }
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web service worker register start`, {
+    path: WEB_PUSH_SERVICE_WORKER_PATH,
+  });
+
+  const registration = await navigator.serviceWorker.register(WEB_PUSH_SERVICE_WORKER_PATH);
+  const readyRegistration = await navigator.serviceWorker.ready;
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web service worker ready`, {
+    scope: readyRegistration.scope,
+  });
+
+  return readyRegistration ?? registration;
+};
+
+const urlBase64ToUint8Array = (value: string) => {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4);
+  const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let index = 0; index < rawData.length; index += 1) {
+    outputArray[index] = rawData.charCodeAt(index);
+  }
+
+  return outputArray;
+};
+
+const getOrCreateWebPushSubscriptionAsync = async (
+  registration: ServiceWorkerRegistration
+) => {
+  const existingSubscription = await registration.pushManager.getSubscription();
+
+  if (existingSubscription) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} web push subscription existing`, {
+      endpoint: existingSubscription.endpoint,
+    });
+    return existingSubscription;
+  }
+
+  if (!WEB_PUSH_VAPID_PUBLIC_KEY) {
+    throw new Error(
+      'La clé EXPO_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY manque dans .env. Redémarre Expo après l’avoir ajoutée.'
+    );
+  }
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web push subscribe start`);
+
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(WEB_PUSH_VAPID_PUBLIC_KEY),
+  });
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web push subscribe done`, {
+    endpoint: subscription.endpoint,
+  });
+
+  return subscription;
+};
+
+const saveWebPushSubscriptionAsync = async (subscription: PushSubscription) => {
+  const subscriptionJson = subscription.toJSON();
+  const p256dh = subscriptionJson.keys?.p256dh;
+  const auth = subscriptionJson.keys?.auth;
+
+  if (!subscription.endpoint || !p256dh || !auth) {
+    throw new Error("L'abonnement push du navigateur est incomplet.");
+  }
+
+  const { data, error: userError } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!data.user) {
+    throw new Error("Reconnecte-toi avant d'activer les notifications.");
+  }
+
+  const payload = {
+    user_id: data.user.id,
+    endpoint: subscription.endpoint,
+    p256dh,
+    auth,
+    expiration_time: subscription.expirationTime
+      ? new Date(subscription.expirationTime).toISOString()
+      : null,
+    user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web push subscription save start`, {
+    userId: payload.user_id,
+    endpoint: payload.endpoint,
+  });
+
+  const { error } = await supabase
+    .from('web_push_subscriptions')
+    .upsert(payload, { onConflict: 'endpoint' });
+
+  if (error) {
+    throw error;
+  }
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web push subscription save done`, {
+    userId: payload.user_id,
+    endpoint: payload.endpoint,
+  });
+};
+
+const getWebPushSubscriptionStateAsync = async (): Promise<NotificationPermissionState> => {
+  const baseState = getWebNotificationPermissionState();
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web permission state`, baseState);
+
+  if (!baseState.supported || window.Notification.permission !== 'granted') {
+    return baseState;
+  }
+
+  try {
+    const registration = await registerWebServiceWorkerAsync();
+    const subscription = await registration.pushManager.getSubscription();
+
+    if (!subscription) {
+      console.log(`${NOTIFICATION_LOG_PREFIX} web push subscription missing`);
+      return {
+        ...baseState,
+        granted: false,
+        canAskAgain: true,
+      };
+    }
+
+    await saveWebPushSubscriptionAsync(subscription);
+
+    return {
+      ...baseState,
+      granted: true,
+    };
+  } catch (error) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} web push subscription state error`, error);
+    return {
+      ...baseState,
+      granted: false,
+      canAskAgain: true,
+    };
+  }
+};
+
+const requestWebPushPermissionAsync = async (): Promise<NotificationPermissionState> => {
+  if (!isWebPushSupported()) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} web request unsupported`, {
+      platform: Platform.OS,
+    });
+
+    return {
+      supported: false,
+      granted: false,
+      canAskAgain: false,
+    };
+  }
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web permission request start`);
+
+  const permission = await window.Notification.requestPermission();
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web permission request result`, {
+    permission,
+  });
+
+  if (permission !== 'granted') {
+    return {
+      supported: true,
+      granted: false,
+      canAskAgain: permission !== 'denied',
+    };
+  }
+
+  const registration = await registerWebServiceWorkerAsync();
+  const subscription = await getOrCreateWebPushSubscriptionAsync(registration);
+  await saveWebPushSubscriptionAsync(subscription);
+
+  return {
+    supported: true,
+    granted: true,
+    canAskAgain: true,
+  };
+};
+
+const ensureWebPushSubscriptionStoredAsync = async () => {
+  if (!isWebPushSupported() || window.Notification.permission !== 'granted') {
+    console.log(`${NOTIFICATION_LOG_PREFIX} web schedule skip`, {
+      supported: isWebPushSupported(),
+      permission: isWebPushSupported() ? window.Notification.permission : null,
+    });
+    return;
+  }
+
+  const registration = await registerWebServiceWorkerAsync();
+  const subscription = await getOrCreateWebPushSubscriptionAsync(registration);
+  await saveWebPushSubscriptionAsync(subscription);
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} web schedule server-driven`, {
+    reminders: DEFAULT_NOTIFICATION_REMINDERS.map((reminder) => ({
+      id: reminder.id,
+      at: formatReminderTime(reminder.hour, reminder.minute),
+    })),
   });
 };
 
@@ -100,7 +353,15 @@ const arePermissionsGranted = (
   permissions.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
 
 export const getNotificationPermissionStateAsync = async (): Promise<NotificationPermissionState> => {
+  if (Platform.OS === 'web') {
+    return getWebPushSubscriptionStateAsync();
+  }
+
   if (!isNotificationsSupported()) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} get permissions unsupported`, {
+      platform: Platform.OS,
+    });
+
     return {
       supported: false,
       granted: false,
@@ -111,17 +372,33 @@ export const getNotificationPermissionStateAsync = async (): Promise<Notificatio
   configureNotificationHandler();
   await setupNotificationChannelAsync();
 
-  const permissions = await Notifications.getPermissionsAsync();
+  console.log(`${NOTIFICATION_LOG_PREFIX} get permissions start`);
 
-  return {
+  const permissions = await Notifications.getPermissionsAsync();
+  const state = {
     supported: true,
     granted: arePermissionsGranted(permissions),
     canAskAgain: permissions.canAskAgain,
   };
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} get permissions result`, {
+    permissions,
+    state,
+  });
+
+  return state;
 };
 
 export const requestNotificationPermissionAsync = async (): Promise<NotificationPermissionState> => {
+  if (Platform.OS === 'web') {
+    return requestWebPushPermissionAsync();
+  }
+
   if (!isNotificationsSupported()) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} request permissions unsupported`, {
+      platform: Platform.OS,
+    });
+
     return {
       supported: false,
       granted: false,
@@ -131,6 +408,8 @@ export const requestNotificationPermissionAsync = async (): Promise<Notification
 
   configureNotificationHandler();
   await setupNotificationChannelAsync();
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} request permissions start`);
 
   const permissions = await Notifications.requestPermissionsAsync({
     ios: {
@@ -139,21 +418,40 @@ export const requestNotificationPermissionAsync = async (): Promise<Notification
       allowSound: true,
     },
   });
-
-  return {
+  const state = {
     supported: true,
     granted: arePermissionsGranted(permissions),
     canAskAgain: permissions.canAskAgain,
   };
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} request permissions result`, {
+    permissions,
+    state,
+  });
+
+  return state;
 };
 
 export const formatReminderTime = (hour: number, minute: number) =>
   `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
 export const scheduleDefaultRemindersAsync = async () => {
-  if (!isNotificationsSupported()) {
+  if (Platform.OS === 'web') {
+    await ensureWebPushSubscriptionStoredAsync();
     return;
   }
+
+  if (!isNotificationsSupported()) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} schedule unsupported`, { platform: Platform.OS });
+    return;
+  }
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} schedule start`, {
+    reminders: DEFAULT_NOTIFICATION_REMINDERS.map((reminder) => ({
+      id: reminder.id,
+      at: formatReminderTime(reminder.hour, reminder.minute),
+    })),
+  });
 
   configureNotificationHandler();
   await setupNotificationChannelAsync();
@@ -164,6 +462,11 @@ export const scheduleDefaultRemindersAsync = async () => {
     scheduledNotifications.map((notification) => notification.identifier)
   );
 
+  console.log(`${NOTIFICATION_LOG_PREFIX} schedule current state`, {
+    stored: scheduledReminders,
+    scheduledCount: scheduledNotifications.length,
+  });
+
   if (
     scheduledReminders?.signature === DEFAULT_REMINDERS_SIGNATURE &&
     scheduledReminders.notificationIds.length === DEFAULT_NOTIFICATION_REMINDERS.length &&
@@ -171,10 +474,17 @@ export const scheduleDefaultRemindersAsync = async () => {
       scheduledNotificationIds.has(notificationId)
     )
   ) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} schedule already up to date`, {
+      notificationIds: scheduledReminders.notificationIds,
+    });
     return;
   }
 
   if (scheduledReminders) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} schedule cancel old reminders`, {
+      notificationIds: scheduledReminders.notificationIds,
+    });
+
     await Promise.all(
       scheduledReminders.notificationIds.map((notificationId) =>
         Notifications.cancelScheduledNotificationAsync(notificationId)
@@ -204,6 +514,8 @@ export const scheduleDefaultRemindersAsync = async () => {
     )
   );
 
+  console.log(`${NOTIFICATION_LOG_PREFIX} schedule created`, { notificationIds });
+
   await AsyncStorage.setItem(
     SCHEDULED_REMINDERS_STORAGE_KEY,
     JSON.stringify({
@@ -211,12 +523,18 @@ export const scheduleDefaultRemindersAsync = async () => {
       notificationIds,
     })
   );
+
+  console.log(`${NOTIFICATION_LOG_PREFIX} schedule stored`, {
+    signature: DEFAULT_REMINDERS_SIGNATURE,
+    notificationIds,
+  });
 };
 
 const loadScheduledDefaultRemindersAsync = async () => {
   const stored = await AsyncStorage.getItem(SCHEDULED_REMINDERS_STORAGE_KEY);
 
   if (!stored) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} stored reminders empty`);
     return null;
   }
 
@@ -228,8 +546,11 @@ const loadScheduledDefaultRemindersAsync = async () => {
       !Array.isArray(parsed.notificationIds) ||
       parsed.notificationIds.some((notificationId) => typeof notificationId !== 'string')
     ) {
+      console.log(`${NOTIFICATION_LOG_PREFIX} stored reminders invalid`, parsed);
       return null;
     }
+
+    console.log(`${NOTIFICATION_LOG_PREFIX} stored reminders loaded`, parsed);
 
     return {
       signature: parsed.signature,

@@ -294,8 +294,10 @@ export default function Home({ session }: HomeProps) {
     granted: false,
     canAskAgain: true,
   });
+  const notificationPermissionRef = useRef(notificationPermission);
   const [isNotificationPermissionLoading, setIsNotificationPermissionLoading] = useState(true);
   const [isNotificationPromptDismissed, setIsNotificationPromptDismissed] = useState(false);
+  notificationPermissionRef.current = notificationPermission;
 
   const userId = session?.user.id;
   const email = session?.user.email ?? 'utilisateur';
@@ -321,14 +323,19 @@ export default function Home({ session }: HomeProps) {
   );
 
   const refreshNotificationPermission = useCallback(async () => {
+    console.log('[notifications] ui refresh start');
     setIsNotificationPermissionLoading(true);
 
     try {
       const nextPermission = await getNotificationPermissionStateAsync();
+      console.log('[notifications] ui refresh permission', nextPermission);
       setNotificationPermission(nextPermission);
 
       if (nextPermission.granted) {
+        console.log('[notifications] ui refresh schedule reminders');
         await scheduleDefaultRemindersAsync();
+      } else {
+        console.log('[notifications] ui refresh no schedule', nextPermission);
       }
     } catch (error) {
       console.log('Erreur vérification permission notifications', error);
@@ -533,6 +540,11 @@ export default function Home({ session }: HomeProps) {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
+      console.log('[notifications] app state change', {
+        state,
+        permission: notificationPermissionRef.current,
+      });
+
       if (state === 'active') {
         void refreshNotificationPermission();
       }
@@ -785,20 +797,26 @@ export default function Home({ session }: HomeProps) {
   };
 
   const handleRequestNotifications = async () => {
+    console.log('[notifications] ui request press', notificationPermission);
     setIsNotificationPermissionLoading(true);
 
     try {
       if (!notificationPermission.canAskAgain) {
+        console.log('[notifications] ui open settings');
         await Linking.openSettings();
         return;
       }
 
       const nextPermission = await requestNotificationPermissionAsync();
+      console.log('[notifications] ui request permission result', nextPermission);
       setNotificationPermission(nextPermission);
 
       if (nextPermission.granted) {
+        console.log('[notifications] ui request schedule reminders');
         await scheduleDefaultRemindersAsync();
         setIsNotificationPromptDismissed(true);
+      } else {
+        console.log('[notifications] ui request refused or pending', nextPermission);
       }
     } catch (error) {
       console.log('Erreur demande permission notifications', error);
@@ -955,57 +973,13 @@ export default function Home({ session }: HomeProps) {
         <View>
           <Text style={styles.sectionTitle}>Fil du groupe</Text>
           <Text style={styles.sectionSubtitle}>
-            Les infos les plus récentes en premier - {todayLabel}
+            {todayLabel}
           </Text>
         </View>
         <Pressable onPress={() => void loadDashboard()} style={styles.refreshButton}>
           <MaterialCommunityIcons name="refresh" size={20} color={AppTheme.primary} />
         </Pressable>
       </View>
-
-      {notificationPermission.supported && !areNotificationsReady ? (
-        <View style={styles.notificationHomeCard}>
-          <View style={styles.notificationHomeHeader}>
-            <View style={styles.notificationHomeIcon}>
-              <MaterialCommunityIcons name="bell-ring-outline" size={22} color={AppTheme.primary} />
-            </View>
-            <View style={styles.notificationHomeText}>
-              <Text style={styles.notificationHomeTitle}>Active les rappels</Text>
-              <Text style={styles.notificationHomeSubtitle}>
-                Pesée et repas seront rappelés automatiquement.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.defaultRemindersList}>
-            {DEFAULT_NOTIFICATION_REMINDERS.map((reminder) => (
-              <Text key={reminder.id} style={styles.defaultReminderText}>
-                {formatReminderTime(reminder.hour, reminder.minute)} - {reminder.body}
-              </Text>
-            ))}
-          </View>
-
-          <Pressable
-            disabled={isNotificationPermissionLoading}
-            onPress={handleRequestNotifications}
-            style={({ pressed }) => [
-              styles.inlineButton,
-              pressed && styles.inlineButtonPressed,
-              isNotificationPermissionLoading && styles.buttonDisabled,
-            ]}>
-            {isNotificationPermissionLoading ? (
-              <ActivityIndicator color={AppTheme.primary} />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="bell-ring-outline" size={18} color={AppTheme.primary} />
-                <Text style={styles.inlineButtonText}>
-                  {notificationPermission.canAskAgain ? 'Activer les notifications' : 'Ouvrir les réglages'}
-                </Text>
-              </>
-            )}
-          </Pressable>
-        </View>
-      ) : null}
 
       {dashboardError ? (
         <View style={styles.errorBox}>
@@ -1204,7 +1178,7 @@ export default function Home({ session }: HomeProps) {
       <View style={styles.formHeader}>
         <Text style={styles.title}>Paramètres</Text>
         <Text style={styles.subtitle}>
-          Choisis le pseudo affiché dans le fil et gère ta session.
+          Choisis le pseudo affiché dans le fil, les rappels et ta session.
         </Text>
       </View>
 
@@ -1256,6 +1230,66 @@ export default function Home({ session }: HomeProps) {
           )}
         </Pressable>
       </View>
+
+      {notificationPermission.supported ? (
+        <View style={styles.formCard}>
+          <View style={styles.notificationSettingsHeader}>
+            <View style={styles.notificationSettingsIcon}>
+              <MaterialCommunityIcons
+                name={areNotificationsReady ? 'bell-check-outline' : 'bell-ring-outline'}
+                size={24}
+                color={areNotificationsReady ? AppTheme.success : AppTheme.primary}
+              />
+            </View>
+            <View style={styles.notificationSettingsText}>
+              <Text style={styles.notificationSettingsTitle}>Notifications</Text>
+              <Text style={styles.notificationSettingsDescription}>
+                Active les rappels automatiques pour la pesée et les repas.
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.notificationStatusPill,
+                areNotificationsReady && styles.notificationStatusPillReady,
+              ]}>
+              <Text
+                style={[
+                  styles.notificationStatusText,
+                  areNotificationsReady && styles.notificationStatusTextReady,
+                ]}>
+                {areNotificationsReady ? 'Acceptées' : 'À accepter'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.defaultRemindersList}>
+            {DEFAULT_NOTIFICATION_REMINDERS.map((reminder) => (
+              <Text key={reminder.id} style={styles.defaultReminderText}>
+                {formatReminderTime(reminder.hour, reminder.minute)} - {reminder.body}
+              </Text>
+            ))}
+          </View>
+
+          {!areNotificationsReady ? (
+            <Pressable
+              disabled={isNotificationPermissionLoading}
+              onPress={handleRequestNotifications}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.primaryButtonPressed,
+                isNotificationPermissionLoading && styles.buttonDisabled,
+              ]}>
+              {isNotificationPermissionLoading ? (
+                <ActivityIndicator color={AppTheme.surface} />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {notificationPermission.canAskAgain ? 'Accepter les notifications' : 'Ouvrir les réglages'}
+                </Text>
+              )}
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
 
       <Pressable
         disabled={isSigningOut}
@@ -1517,44 +1551,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: AppTheme.primarySoft,
   },
-  notificationHomeCard: {
-    gap: 12,
-    borderWidth: 1,
-    borderColor: AppTheme.primaryBorder,
-    borderRadius: 8,
-    backgroundColor: AppTheme.primarySoft,
-    padding: 14,
-  },
-  notificationHomeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  notificationHomeIcon: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: AppTheme.primaryBorder,
-    borderRadius: 10,
-    backgroundColor: AppTheme.surface,
-  },
-  notificationHomeText: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  notificationHomeTitle: {
-    color: AppTheme.text,
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  notificationHomeSubtitle: {
-    color: AppTheme.textSoft,
-    fontSize: 13,
-    lineHeight: 18,
-  },
   defaultRemindersList: {
     gap: 4,
   },
@@ -1762,25 +1758,55 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  inlineButton: {
-    minHeight: 42,
+  notificationSettingsHeader: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  notificationSettingsIcon: {
+    width: 46,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
     borderWidth: 1,
     borderColor: AppTheme.primaryBorder,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: AppTheme.primarySoft,
-    paddingHorizontal: 12,
   },
-  inlineButtonPressed: {
-    backgroundColor: AppTheme.primarySoftPressed,
+  notificationSettingsText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
   },
-  inlineButtonText: {
-    color: AppTheme.primary,
-    fontSize: 14,
+  notificationSettingsTitle: {
+    color: AppTheme.text,
+    fontSize: 16,
     fontWeight: '900',
+  },
+  notificationSettingsDescription: {
+    color: AppTheme.textSoft,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  notificationStatusPill: {
+    borderWidth: 1,
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 999,
+    backgroundColor: AppTheme.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  notificationStatusPillReady: {
+    borderColor: AppTheme.successBorder,
+    backgroundColor: AppTheme.successSoft,
+  },
+  notificationStatusText: {
+    color: AppTheme.primary,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  notificationStatusTextReady: {
+    color: AppTheme.success,
   },
   chartCard: {
     gap: 16,
