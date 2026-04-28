@@ -258,31 +258,17 @@ const getWebPushSubscriptionStateAsync = async (): Promise<NotificationPermissio
 
   try {
     const registration = await registerWebServiceWorkerAsync();
-    const subscription = await registration.pushManager.getSubscription();
-
-    if (!subscription) {
-      console.log(`${NOTIFICATION_LOG_PREFIX} web push subscription missing`);
-      return {
-        ...baseState,
-        granted: false,
-        canAskAgain: true,
-      };
-    }
-
+    const subscription = await getOrCreateWebPushSubscriptionAsync(registration);
     await saveWebPushSubscriptionAsync(subscription);
-
-    return {
-      ...baseState,
-      granted: true,
-    };
   } catch (error) {
     console.log(`${NOTIFICATION_LOG_PREFIX} web push subscription state error`, error);
-    return {
-      ...baseState,
-      granted: false,
-      canAskAgain: true,
-    };
   }
+
+  return {
+    ...baseState,
+    granted: true,
+    canAskAgain: true,
+  };
 };
 
 const requestWebPushPermissionAsync = async (): Promise<NotificationPermissionState> => {
@@ -314,9 +300,13 @@ const requestWebPushPermissionAsync = async (): Promise<NotificationPermissionSt
     };
   }
 
-  const registration = await registerWebServiceWorkerAsync();
-  const subscription = await getOrCreateWebPushSubscriptionAsync(registration);
-  await saveWebPushSubscriptionAsync(subscription);
+  try {
+    const registration = await registerWebServiceWorkerAsync();
+    const subscription = await getOrCreateWebPushSubscriptionAsync(registration);
+    await saveWebPushSubscriptionAsync(subscription);
+  } catch (error) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} web push subscription request error`, error);
+  }
 
   return {
     supported: true,
@@ -334,9 +324,13 @@ const ensureWebPushSubscriptionStoredAsync = async () => {
     return;
   }
 
-  const registration = await registerWebServiceWorkerAsync();
-  const subscription = await getOrCreateWebPushSubscriptionAsync(registration);
-  await saveWebPushSubscriptionAsync(subscription);
+  try {
+    const registration = await registerWebServiceWorkerAsync();
+    const subscription = await getOrCreateWebPushSubscriptionAsync(registration);
+    await saveWebPushSubscriptionAsync(subscription);
+  } catch (error) {
+    console.log(`${NOTIFICATION_LOG_PREFIX} web schedule subscription error`, error);
+  }
 
   console.log(`${NOTIFICATION_LOG_PREFIX} web schedule server-driven`, {
     reminders: DEFAULT_NOTIFICATION_REMINDERS.map((reminder) => ({
