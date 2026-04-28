@@ -20,7 +20,10 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.clement27327.suivirepas"
+      "package": "com.clement27327.suivirepas",
+      "permissions": [
+        "SCHEDULE_EXACT_ALARM"
+      ]
     },
     "web": {
       "output": "static",
@@ -33,6 +36,12 @@
         {
           "photosPermission": "Autorise Suivi Repas à choisir une photo de ton repas.",
           "cameraPermission": "Autorise Suivi Repas à prendre une photo de ton repas."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#00561b"
         }
       ],
       [

@@ -30,13 +30,16 @@ type LoginProps = {
 };
 
 export default function Login({ onAuthSuccess }: LoginProps) {
+  const [authMode, setAuthMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loadingAction, setLoadingAction] = useState<LoadingAction>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const trimmedEmail = email.trim();
   const isLoading = loadingAction !== null;
+  const isSignUpMode = authMode === 'signUp';
   const isSignInLoading = loadingAction === 'signIn';
   const isSignUpLoading = loadingAction === 'signUp';
 
@@ -60,7 +63,25 @@ export default function Login({ onAuthSuccess }: LoginProps) {
       return false;
     }
 
+    if (action === 'signUp' && password !== confirmPassword) {
+      showError('Confirmation incorrecte', 'Les deux mots de passe doivent être identiques.');
+      return false;
+    }
+
     return true;
+  };
+
+  const openSignUp = () => {
+    setAuthMode('signUp');
+    setPassword('');
+    setConfirmPassword('');
+    setFeedback(null);
+  };
+
+  const openSignIn = () => {
+    setAuthMode('signIn');
+    setConfirmPassword('');
+    setFeedback(null);
   };
 
   const handleSignIn = async () => {
@@ -147,6 +168,7 @@ export default function Login({ onAuthSuccess }: LoginProps) {
 
       setFeedback({ type: 'success', message });
       Alert.alert('Compte créé', message);
+      openSignIn();
     } catch (error) {
       console.log("Erreur inattendue pendant l'inscription", error);
       showError('Inscription impossible', 'Une erreur inattendue est survenue.');
@@ -164,14 +186,16 @@ export default function Login({ onAuthSuccess }: LoginProps) {
           <View style={styles.header}>
             <View style={styles.brandMark}>
               <MaterialCommunityIcons
-                name="silverware-fork-knife"
+                name={isSignUpMode ? 'account-plus-outline' : 'silverware-fork-knife'}
                 size={28}
                 color={AppTheme.primary}
               />
             </View>
-            <Text style={styles.title}>Suivi Repas</Text>
+            <Text style={styles.title}>{isSignUpMode ? 'Créer un compte' : 'Suivi Repas'}</Text>
             <Text style={styles.subtitle}>
-              Connecte-toi pour suivre tes repas et ton poids
+              {isSignUpMode
+                ? 'Renseigne tes informations pour rejoindre le suivi du groupe.'
+                : 'Connecte-toi pour suivre tes repas et ton poids.'}
             </Text>
           </View>
 
@@ -203,15 +227,36 @@ export default function Login({ onAuthSuccess }: LoginProps) {
                 autoComplete="password"
                 autoCorrect={false}
                 editable={!isLoading}
-                onSubmitEditing={handleSignIn}
+                onSubmitEditing={isSignUpMode ? undefined : handleSignIn}
                 placeholder="Mot de passe"
                 placeholderTextColor={AppTheme.placeholder}
-                returnKeyType="done"
+                returnKeyType={isSignUpMode ? 'next' : 'done'}
                 secureTextEntry
                 style={styles.input}
-                textContentType="password"
+                textContentType={isSignUpMode ? 'newPassword' : 'password'}
               />
             </View>
+
+            {isSignUpMode ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Confirmer le mot de passe</Text>
+                <TextInput
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  autoCapitalize="none"
+                  autoComplete="new-password"
+                  autoCorrect={false}
+                  editable={!isLoading}
+                  onSubmitEditing={handleSignUp}
+                  placeholder="Confirme ton mot de passe"
+                  placeholderTextColor={AppTheme.placeholder}
+                  returnKeyType="done"
+                  secureTextEntry
+                  style={styles.input}
+                  textContentType="newPassword"
+                />
+              </View>
+            ) : null}
           </View>
 
           {feedback ? (
@@ -223,47 +268,83 @@ export default function Login({ onAuthSuccess }: LoginProps) {
           ) : null}
 
           <View style={styles.actions}>
-            <Pressable
-              disabled={isLoading}
-              onPress={handleSignIn}
-              style={({ pressed }) => [
-                styles.button,
-                styles.primaryButton,
-                (pressed || isSignInLoading) && styles.primaryButtonPressed,
-                isLoading && !isSignInLoading && styles.buttonDisabled,
-              ]}>
-              {isSignInLoading ? (
-                <ActivityIndicator color={AppTheme.surface} />
-              ) : (
-                <>
-                  <MaterialCommunityIcons name="login" size={19} color={AppTheme.surface} />
-                  <Text style={styles.primaryButtonText}>Se connecter</Text>
-                </>
-              )}
-            </Pressable>
+            {isSignUpMode ? (
+              <>
+                <Pressable
+                  disabled={isLoading}
+                  onPress={handleSignUp}
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.primaryButton,
+                    (pressed || isSignUpLoading) && styles.primaryButtonPressed,
+                    isLoading && !isSignUpLoading && styles.buttonDisabled,
+                  ]}>
+                  {isSignUpLoading ? (
+                    <ActivityIndicator color={AppTheme.surface} />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons
+                        name="account-plus-outline"
+                        size={19}
+                        color={AppTheme.surface}
+                      />
+                      <Text style={styles.primaryButtonText}>Créer le compte</Text>
+                    </>
+                  )}
+                </Pressable>
 
-            <Pressable
-              disabled={isLoading}
-              onPress={handleSignUp}
-              style={({ pressed }) => [
-                styles.button,
-                styles.secondaryButton,
-                (pressed || isSignUpLoading) && styles.secondaryButtonPressed,
-                isLoading && !isSignUpLoading && styles.buttonDisabled,
-              ]}>
-              {isSignUpLoading ? (
-                <ActivityIndicator color={AppTheme.primary} />
-              ) : (
-                <>
+                <Pressable
+                  disabled={isLoading}
+                  onPress={openSignIn}
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.secondaryButton,
+                    pressed && styles.secondaryButtonPressed,
+                    isLoading && styles.buttonDisabled,
+                  ]}>
+                  <MaterialCommunityIcons name="arrow-left" size={19} color={AppTheme.primary} />
+                  <Text style={styles.secondaryButtonText}>Déjà un compte</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Pressable
+                  disabled={isLoading}
+                  onPress={handleSignIn}
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.primaryButton,
+                    (pressed || isSignInLoading) && styles.primaryButtonPressed,
+                    isLoading && !isSignInLoading && styles.buttonDisabled,
+                  ]}>
+                  {isSignInLoading ? (
+                    <ActivityIndicator color={AppTheme.surface} />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="login" size={19} color={AppTheme.surface} />
+                      <Text style={styles.primaryButtonText}>Se connecter</Text>
+                    </>
+                  )}
+                </Pressable>
+
+                <Pressable
+                  disabled={isLoading}
+                  onPress={openSignUp}
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.secondaryButton,
+                    pressed && styles.secondaryButtonPressed,
+                    isLoading && styles.buttonDisabled,
+                  ]}>
                   <MaterialCommunityIcons
                     name="account-plus-outline"
                     size={19}
                     color={AppTheme.primary}
                   />
                   <Text style={styles.secondaryButtonText}>Créer un compte</Text>
-                </>
-              )}
-            </Pressable>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
       </ScrollView>

@@ -2,12 +2,15 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Session } from '@supabase/supabase-js';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   KeyboardAvoidingView,
   LayoutChangeEvent,
+  Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -19,20 +22,31 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppTheme } from '@/constants/theme';
+import {
+  configureNotificationHandler,
+  DEFAULT_NOTIFICATION_REMINDERS,
+  formatReminderTime,
+  getNotificationPermissionStateAsync,
+  isNotificationsSupported,
+  type NotificationPermissionState,
+  requestNotificationPermissionAsync,
+  scheduleDefaultRemindersAsync,
+} from '@/src/lib/notificationReminders';
 import { supabase } from '@/src/lib/supabase';
 
 type HomeProps = {
   session?: Session | null;
 };
 
-type TabKey = 'home' | 'meal' | 'weight';
+type TabKey = 'home' | 'meal' | 'weight' | 'settings';
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
-type SavingAction = 'meal' | 'weight' | null;
+type SavingAction = 'meal' | 'weight' | 'profile' | null;
 type WeightRangeKey = 'week' | 'month' | 'year' | 'all';
 
 type ProfileRow = {
   user_id: string;
   email: string | null;
+  pseudo: string | null;
   updated_at: string;
 };
 
@@ -62,14 +76,43 @@ type ChartPoint = {
   createdAt: string;
 };
 
-type UserSummary = {
-  userId: string;
-  email: string;
-  latestMeal: MealRow | null;
-  latestWeight: WeightRow | null;
-  lastActivityAt: string | null;
-  isCurrentUser: boolean;
+type ActivityType = 'meal' | 'weight';
+type ReactionValue = 'up' | 'down';
+
+type ActivityReactionRow = {
+  target_type: ActivityType;
+  target_id: number;
+  user_id: string;
+  reaction: ReactionValue;
 };
+
+type ActivityReactions = {
+  up: number;
+  down: number;
+  currentUserReaction: ReactionValue | null;
+};
+
+type BaseActivityItem = {
+  key: string;
+  type: ActivityType;
+  id: number;
+  userId: string;
+  userDisplayName: string;
+  createdAt: string;
+  reactions: ActivityReactions;
+};
+
+type MealActivityItem = BaseActivityItem & {
+  type: 'meal';
+  meal: MealRow;
+};
+
+type WeightActivityItem = BaseActivityItem & {
+  type: 'weight';
+  weight: WeightRow;
+};
+
+type ActivityItem = MealActivityItem | WeightActivityItem;
 
 type TabItem = {
   key: TabKey;
@@ -87,6 +130,7 @@ const TABS: TabItem[] = [
   { key: 'home', label: 'Accueil', icon: 'home-outline' },
   { key: 'meal', label: 'Repas', icon: 'silverware-fork-knife' },
   { key: 'weight', label: 'Poids', icon: 'scale-bathroom' },
+  { key: 'settings', label: 'Paramètres', icon: 'cog-outline' },
 ];
 
 const WEIGHT_RANGES: WeightRangeOption[] = [
@@ -190,6 +234,32 @@ const formatDate = (value?: string | null) => {
   }).format(new Date(value));
 };
 
+const formatActivityTime = (value: string) => {
+  const date = new Date(value);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+
+  return minutes === '00' ? `${hours}h` : `${hours}h${minutes}`;
+};
+
+const getActivityKey = (type: ActivityType, id: number) => `${type}-${id}`;
+
+const getDisplayName = (pseudo?: string | null, email?: string | null) => {
+  const cleanPseudo = pseudo?.trim();
+
+  if (cleanPseudo) {
+    return cleanPseudo;
+  }
+
+  if (!email) {
+    return 'Utilisateur';
+  }
+
+  const [name] = email.split('@');
+
+  return name || email;
+};
+
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) {
     return error.message;
@@ -203,23 +273,42 @@ const getErrorMessage = (error: unknown) => {
 };
 
 export default function Home({ session }: HomeProps) {
+  const hasLoadedProfile = useRef(false);
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [savingAction, setSavingAction] = useState<SavingAction>(null);
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
-  const [users, setUsers] = useState<UserSummary[]>([]);
+  const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
   const [weightHistory, setWeightHistory] = useState<WeightRow[]>([]);
+  const [reactingTo, setReactingTo] = useState<string | null>(null);
   const [mealName, setMealName] = useState('');
   const [mealCalories, setMealCalories] = useState('');
   const [mealProteins, setMealProteins] = useState('');
   const [mealPhoto, setMealPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [weight, setWeight] = useState('');
+  const [profilePseudo, setProfilePseudo] = useState('');
+  const [profileDraft, setProfileDraft] = useState('');
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>({
+    supported: isNotificationsSupported(),
+    granted: false,
+    canAskAgain: true,
+  });
+  const [isNotificationPermissionLoading, setIsNotificationPermissionLoading] = useState(true);
+  const [isNotificationPromptDismissed, setIsNotificationPromptDismissed] = useState(false);
 
   const userId = session?.user.id;
   const email = session?.user.email ?? 'utilisateur';
   const isSavingMeal = savingAction === 'meal';
   const isSavingWeight = savingAction === 'weight';
+  const isSavingProfile = savingAction === 'profile';
+  const displayIdentity = profilePseudo ? `${profilePseudo} - ${email}` : email;
+  const areNotificationsReady = notificationPermission.supported && notificationPermission.granted;
+  const shouldShowNotificationModal =
+    notificationPermission.supported &&
+    !isNotificationPermissionLoading &&
+    !notificationPermission.granted &&
+    !isNotificationPromptDismissed;
 
   const todayLabel = useMemo(
     () =>
@@ -230,6 +319,28 @@ export default function Home({ session }: HomeProps) {
       }).format(new Date()),
     []
   );
+
+  const refreshNotificationPermission = useCallback(async () => {
+    setIsNotificationPermissionLoading(true);
+
+    try {
+      const nextPermission = await getNotificationPermissionStateAsync();
+      setNotificationPermission(nextPermission);
+
+      if (nextPermission.granted) {
+        await scheduleDefaultRemindersAsync();
+      }
+    } catch (error) {
+      console.log('Erreur vérification permission notifications', error);
+      setNotificationPermission({
+        supported: false,
+        granted: false,
+        canAskAgain: false,
+      });
+    } finally {
+      setIsNotificationPermissionLoading(false);
+    }
+  }, []);
 
   const ensureCurrentProfile = useCallback(async () => {
     if (!userId) {
@@ -250,19 +361,23 @@ export default function Home({ session }: HomeProps) {
     }
   }, [email, userId]);
 
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async (options?: { silent?: boolean }) => {
     if (!userId) {
       setIsDashboardLoading(false);
       return;
     }
 
-    console.log('Chargement des dernières informations de tous les utilisateurs');
-    setIsDashboardLoading(true);
+    const shouldShowLoading = !options?.silent;
+
+    console.log('Chargement du fil d activité du groupe');
+    if (shouldShowLoading) {
+      setIsDashboardLoading(true);
+    }
     setDashboardError(null);
 
     try {
-      const [profilesResult, mealsResult, weightsResult] = await Promise.all([
-        supabase.from('profiles').select('user_id,email,updated_at').order('email'),
+      const [profilesResult, mealsResult, weightsResult, reactionsResult] = await Promise.all([
+        supabase.from('profiles').select('user_id,email,pseudo,updated_at').order('email'),
         supabase
           .from('meals')
           .select('id,user_id,user_email,name,calories,proteins,photo_path,created_at')
@@ -273,6 +388,10 @@ export default function Home({ session }: HomeProps) {
           .select('id,user_id,user_email,weight,created_at')
           .order('created_at', { ascending: false })
           .limit(1000),
+        supabase
+          .from('activity_reactions')
+          .select('target_type,target_id,user_id,reaction')
+          .limit(10000),
       ]);
 
       if (profilesResult.error) {
@@ -287,107 +406,107 @@ export default function Home({ session }: HomeProps) {
         throw weightsResult.error;
       }
 
+      if (reactionsResult.error) {
+        throw reactionsResult.error;
+      }
+
       const profileRows = (profilesResult.data ?? []) as ProfileRow[];
       const mealRows = (mealsResult.data ?? []) as MealRow[];
       const weightRows = (weightsResult.data ?? []) as WeightRow[];
+      const reactionRows = (reactionsResult.data ?? []) as ActivityReactionRow[];
       const currentUserWeights = weightRows
         .filter((weightEntry) => weightEntry.user_id === userId)
         .sort(
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
-      const summaries = new Map<string, UserSummary>();
+      const profilesByUser = new Map(
+        profileRows.map((profile) => [profile.user_id, profile])
+      );
+      const currentProfile = profilesByUser.get(userId);
+      const nextProfilePseudo = currentProfile?.pseudo?.trim() ?? '';
 
-      const ensureUser = (id: string, fallbackEmail?: string | null) => {
-        const existing = summaries.get(id);
+      setProfilePseudo(nextProfilePseudo);
+      if (!hasLoadedProfile.current) {
+        setProfileDraft(nextProfilePseudo);
+        hasLoadedProfile.current = true;
+      }
+
+      const getDisplayNameForUser = (id: string, fallbackEmail?: string | null) => {
+        const profile = profilesByUser.get(id);
+
+        if (id === userId) {
+          return getDisplayName(profile?.pseudo, email);
+        }
+
+        return getDisplayName(profile?.pseudo, fallbackEmail ?? profile?.email);
+      };
+      const reactionsByActivity = new Map<string, ActivityReactions>();
+      const getReactionSummary = (type: ActivityType, id: number) => {
+        const key = getActivityKey(type, id);
+        const existing = reactionsByActivity.get(key);
 
         if (existing) {
-          if (fallbackEmail && existing.email === 'Utilisateur') {
-            existing.email = fallbackEmail;
-          }
-
           return existing;
         }
 
-        const summary: UserSummary = {
-          userId: id,
-          email: fallbackEmail ?? 'Utilisateur',
-          latestMeal: null,
-          latestWeight: null,
-          lastActivityAt: null,
-          isCurrentUser: id === userId,
+        const summary: ActivityReactions = {
+          up: 0,
+          down: 0,
+          currentUserReaction: null,
         };
 
-        summaries.set(id, summary);
+        reactionsByActivity.set(key, summary);
         return summary;
       };
 
-      ensureUser(userId, email);
-
-      profileRows.forEach((profile) => {
-        const summary = ensureUser(profile.user_id, profile.email);
-        summary.email = profile.email ?? summary.email;
-      });
-
-      mealRows.forEach((meal) => {
-        const summary = ensureUser(meal.user_id, meal.user_email);
-
-        if (!summary.latestMeal) {
-          summary.latestMeal = meal;
+      reactionRows.forEach((reaction) => {
+        if (reaction.reaction !== 'up' && reaction.reaction !== 'down') {
+          return;
         }
 
-        if (
-          !summary.lastActivityAt ||
-          new Date(meal.created_at).getTime() > new Date(summary.lastActivityAt).getTime()
-        ) {
-          summary.lastActivityAt = meal.created_at;
+        const summary = getReactionSummary(
+          reaction.target_type,
+          Number(reaction.target_id)
+        );
+        summary[reaction.reaction] += 1;
+
+        if (reaction.user_id === userId) {
+          summary.currentUserReaction = reaction.reaction;
         }
       });
 
-      weightRows.forEach((weightEntry) => {
-        const summary = ensureUser(weightEntry.user_id, weightEntry.user_email);
-
-        if (!summary.latestWeight) {
-          summary.latestWeight = weightEntry;
-        }
-
-        if (
-          !summary.lastActivityAt ||
-          new Date(weightEntry.created_at).getTime() >
-            new Date(summary.lastActivityAt).getTime()
-        ) {
-          summary.lastActivityAt = weightEntry.created_at;
-        }
-      });
-
-      await Promise.all(
-        Array.from(summaries.values()).map(async (summary) => {
-          if (!summary.latestMeal?.photo_path) {
-            return;
-          }
-
-          summary.latestMeal.photo_url = await createSignedMealPhotoUrl(
-            summary.latestMeal.photo_path
-          );
-        })
+      const mealsWithPhotoUrls = await Promise.all(
+        mealRows.map(async (meal) => ({
+          ...meal,
+          photo_url: await createSignedMealPhotoUrl(meal.photo_path),
+        }))
+      );
+      const mealActivities = mealsWithPhotoUrls.map<ActivityItem>((meal) => ({
+        key: getActivityKey('meal', meal.id),
+        type: 'meal',
+        id: meal.id,
+        userId: meal.user_id,
+        userDisplayName: getDisplayNameForUser(meal.user_id, meal.user_email),
+        createdAt: meal.created_at,
+        meal,
+        reactions: getReactionSummary('meal', meal.id),
+      }));
+      const weightActivities = weightRows.map<ActivityItem>((weightEntry) => ({
+        key: getActivityKey('weight', weightEntry.id),
+        type: 'weight',
+        id: weightEntry.id,
+        userId: weightEntry.user_id,
+        userDisplayName: getDisplayNameForUser(weightEntry.user_id, weightEntry.user_email),
+        createdAt: weightEntry.created_at,
+        weight: weightEntry,
+        reactions: getReactionSummary('weight', weightEntry.id),
+      }));
+      const nextActivityFeed = [...mealActivities, ...weightActivities].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 
-      const nextUsers = Array.from(summaries.values()).sort((a, b) => {
-        const aTime = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
-        const bTime = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
-
-        if (aTime !== bTime) {
-          return bTime - aTime;
-        }
-
-        if (a.isCurrentUser !== b.isCurrentUser) {
-          return a.isCurrentUser ? -1 : 1;
-        }
-
-        return a.email.localeCompare(b.email);
-      });
-
-      console.log('Dashboard utilisateurs chargé', { count: nextUsers.length });
-      setUsers(nextUsers);
+      console.log('Fil d activité chargé', { count: nextActivityFeed.length });
+      setActivityFeed(nextActivityFeed);
       setWeightHistory(currentUserWeights);
     } catch (error) {
       const message = getErrorMessage(error);
@@ -397,25 +516,47 @@ export default function Home({ session }: HomeProps) {
         `${message}. Si les tables n'existent pas encore, exécute le fichier supabase/schema.sql dans Supabase.`
       );
     } finally {
-      setIsDashboardLoading(false);
+      if (shouldShowLoading) {
+        setIsDashboardLoading(false);
+      }
     }
   }, [email, userId]);
 
   useEffect(() => {
-    void ensureCurrentProfile().then(loadDashboard);
+    void ensureCurrentProfile().then(() => loadDashboard());
   }, [ensureCurrentProfile, loadDashboard]);
+
+  useEffect(() => {
+    configureNotificationHandler();
+    void refreshNotificationPermission();
+  }, [refreshNotificationPermission]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void refreshNotificationPermission();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [refreshNotificationPermission]);
 
   useEffect(() => {
     const channel = supabase
       .channel('suivi-repas-dashboard')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        void loadDashboard();
+        void loadDashboard({ silent: true });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'meals' }, () => {
-        void loadDashboard();
+        void loadDashboard({ silent: true });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'weights' }, () => {
-        void loadDashboard();
+        void loadDashboard({ silent: true });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_reactions' }, () => {
+        void loadDashboard({ silent: true });
       })
       .subscribe();
 
@@ -601,37 +742,186 @@ export default function Home({ session }: HomeProps) {
     }
   };
 
-  const renderUserCard = (user: UserSummary) => (
-    <View key={user.userId} style={styles.userCard}>
-      <View style={styles.userHeader}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{user.email.charAt(0).toUpperCase()}</Text>
-        </View>
-        <View style={styles.userTitle}>
-          <Text style={styles.userEmail}>{user.email}</Text>
-          <Text style={styles.userMeta}>
-            {user.isCurrentUser ? 'Moi' : 'Membre'} - {formatDate(user.lastActivityAt)}
-          </Text>
-        </View>
-      </View>
+  const handleSaveProfile = async () => {
+    if (!userId) {
+      Alert.alert('Session manquante', 'Reconnecte-toi avant de modifier ton profil.');
+      return;
+    }
 
-      <View style={styles.infoRows}>
-        <View style={styles.infoRow}>
-          <MaterialCommunityIcons
-            name="silverware-fork-knife"
-            size={21}
-            color={AppTheme.primary}
-          />
-          <View style={styles.infoText}>
-            <Text style={styles.infoLabel}>Dernier repas</Text>
-            <Text style={styles.infoValue}>
-              {user.latestMeal
-                ? `${user.latestMeal.name} - ${user.latestMeal.calories} kcal - ${user.latestMeal.proteins} g prot.`
-                : 'Aucun repas'}
+    const nextPseudo = profileDraft.trim();
+
+    if (nextPseudo.length > 32) {
+      Alert.alert('Pseudo trop long', 'Choisis un pseudo de 32 caractères maximum.');
+      return;
+    }
+
+    setSavingAction('profile');
+
+    try {
+      const { error } = await supabase.from('profiles').upsert(
+        {
+          user_id: userId,
+          email,
+          pseudo: nextPseudo || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      setProfilePseudo(nextPseudo);
+      setProfileDraft(nextPseudo);
+      Alert.alert('Profil enregistré', nextPseudo ? 'Ton pseudo est à jour.' : 'Ton pseudo a été retiré.');
+      await loadDashboard({ silent: true });
+    } catch (error) {
+      console.log('Erreur sauvegarde profil Supabase', error);
+      Alert.alert('Profil non enregistré', getErrorMessage(error));
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
+  const handleRequestNotifications = async () => {
+    setIsNotificationPermissionLoading(true);
+
+    try {
+      if (!notificationPermission.canAskAgain) {
+        await Linking.openSettings();
+        return;
+      }
+
+      const nextPermission = await requestNotificationPermissionAsync();
+      setNotificationPermission(nextPermission);
+
+      if (nextPermission.granted) {
+        await scheduleDefaultRemindersAsync();
+        setIsNotificationPromptDismissed(true);
+      }
+    } catch (error) {
+      console.log('Erreur demande permission notifications', error);
+      Alert.alert('Notifications indisponibles', getErrorMessage(error));
+    } finally {
+      setIsNotificationPermissionLoading(false);
+    }
+  };
+
+  const handleReaction = async (activity: ActivityItem, reaction: ReactionValue) => {
+    if (!userId) {
+      Alert.alert('Session manquante', 'Reconnecte-toi avant de réagir.');
+      return;
+    }
+
+    const activityKey = getActivityKey(activity.type, activity.id);
+    const isRemovingReaction = activity.reactions.currentUserReaction === reaction;
+
+    setReactingTo(activityKey);
+
+    try {
+      if (isRemovingReaction) {
+        const { error } = await supabase
+          .from('activity_reactions')
+          .delete()
+          .match({
+            target_type: activity.type,
+            target_id: activity.id,
+            user_id: userId,
+          });
+
+        if (error) {
+          throw error;
+        }
+      } else {
+        const { error } = await supabase.from('activity_reactions').upsert(
+          {
+            target_type: activity.type,
+            target_id: activity.id,
+            user_id: userId,
+            reaction,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'target_type,target_id,user_id' }
+        );
+
+        if (error) {
+          throw error;
+        }
+      }
+
+      await loadDashboard({ silent: true });
+    } catch (error) {
+      console.log('Erreur reaction activité', error);
+      Alert.alert('Réaction impossible', getErrorMessage(error));
+    } finally {
+      setReactingTo(null);
+    }
+  };
+
+  const renderReactionButton = (
+    activity: ActivityItem,
+    reaction: ReactionValue,
+    icon: IconName,
+    activeIcon: IconName,
+    count: number
+  ) => {
+    const isActive = activity.reactions.currentUserReaction === reaction;
+    const isReacting = reactingTo === getActivityKey(activity.type, activity.id);
+    const color = reaction === 'up' ? AppTheme.primary : AppTheme.danger;
+
+    return (
+      <Pressable
+        disabled={isReacting}
+        onPress={() => void handleReaction(activity, reaction)}
+        style={({ pressed }) => [
+          styles.reactionButton,
+          isActive && (reaction === 'up' ? styles.reactionButtonUpActive : styles.reactionButtonDownActive),
+          pressed && styles.reactionButtonPressed,
+          isReacting && styles.buttonDisabled,
+        ]}>
+        <MaterialCommunityIcons
+          name={isActive ? activeIcon : icon}
+          size={18}
+          color={isActive ? AppTheme.surface : color}
+        />
+        <Text style={[styles.reactionCount, isActive && styles.reactionCountActive]}>{count}</Text>
+      </Pressable>
+    );
+  };
+
+  const renderActivityItem = (activity: ActivityItem) => {
+    const isMeal = activity.type === 'meal';
+    const isCurrentUserActivity = activity.userId === userId;
+
+    return (
+      <View key={activity.key} style={styles.activityItem}>
+        <View style={styles.activityMainRow}>
+          <View style={[styles.activityIcon, isMeal ? styles.activityIconMeal : styles.activityIconWeight]}>
+            <MaterialCommunityIcons
+              name={isMeal ? 'silverware-fork-knife' : 'scale-bathroom'}
+              size={20}
+              color={isMeal ? AppTheme.primary : AppTheme.success}
+            />
+          </View>
+
+          <View style={styles.activityText}>
+            <Text style={styles.activityTitle}>
+              <Text style={styles.activityTime}>{formatActivityTime(activity.createdAt)} : </Text>
+              {activity.userDisplayName} a ajouté {isMeal ? 'un repas' : 'son poids'}
             </Text>
-            {user.latestMeal?.photo_url ? (
+            <Text style={styles.activityValue}>
+              {isMeal
+                ? `${activity.meal.name} - ${activity.meal.calories} kcal - ${activity.meal.proteins} g prot.`
+                : `${activity.weight.weight} kg`}
+            </Text>
+            <Text style={styles.activityMeta}>
+              {formatDate(activity.createdAt)}
+              {isCurrentUserActivity ? ' - Moi' : ''}
+            </Text>
+            {isMeal && activity.meal.photo_url ? (
               <Image
-                source={{ uri: user.latestMeal.photo_url }}
+                source={{ uri: activity.meal.photo_url }}
                 style={styles.mealPhoto}
                 contentFit="cover"
               />
@@ -639,30 +929,83 @@ export default function Home({ session }: HomeProps) {
           </View>
         </View>
 
-        <View style={styles.infoRow}>
-          <MaterialCommunityIcons name="scale-bathroom" size={21} color={AppTheme.success} />
-          <View style={styles.infoText}>
-            <Text style={styles.infoLabel}>Dernier poids</Text>
-            <Text style={styles.infoValue}>
-              {user.latestWeight ? `${user.latestWeight.weight} kg` : 'Aucun poids'}
-            </Text>
-          </View>
+        <View style={styles.reactionsRow}>
+          {renderReactionButton(
+            activity,
+            'up',
+            'thumb-up-outline',
+            'thumb-up',
+            activity.reactions.up
+          )}
+          {renderReactionButton(
+            activity,
+            'down',
+            'thumb-down-outline',
+            'thumb-down',
+            activity.reactions.down
+          )}
         </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderHomeTab = () => (
     <View style={styles.tabContent}>
       <View style={styles.sectionHeader}>
         <View>
-          <Text style={styles.sectionTitle}>Derniers suivis</Text>
-          <Text style={styles.sectionSubtitle}>{todayLabel}</Text>
+          <Text style={styles.sectionTitle}>Fil du groupe</Text>
+          <Text style={styles.sectionSubtitle}>
+            Les infos les plus récentes en premier - {todayLabel}
+          </Text>
         </View>
-        <Pressable onPress={loadDashboard} style={styles.refreshButton}>
+        <Pressable onPress={() => void loadDashboard()} style={styles.refreshButton}>
           <MaterialCommunityIcons name="refresh" size={20} color={AppTheme.primary} />
         </Pressable>
       </View>
+
+      {notificationPermission.supported && !areNotificationsReady ? (
+        <View style={styles.notificationHomeCard}>
+          <View style={styles.notificationHomeHeader}>
+            <View style={styles.notificationHomeIcon}>
+              <MaterialCommunityIcons name="bell-ring-outline" size={22} color={AppTheme.primary} />
+            </View>
+            <View style={styles.notificationHomeText}>
+              <Text style={styles.notificationHomeTitle}>Active les rappels</Text>
+              <Text style={styles.notificationHomeSubtitle}>
+                Pesée et repas seront rappelés automatiquement.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.defaultRemindersList}>
+            {DEFAULT_NOTIFICATION_REMINDERS.map((reminder) => (
+              <Text key={reminder.id} style={styles.defaultReminderText}>
+                {formatReminderTime(reminder.hour, reminder.minute)} - {reminder.body}
+              </Text>
+            ))}
+          </View>
+
+          <Pressable
+            disabled={isNotificationPermissionLoading}
+            onPress={handleRequestNotifications}
+            style={({ pressed }) => [
+              styles.inlineButton,
+              pressed && styles.inlineButtonPressed,
+              isNotificationPermissionLoading && styles.buttonDisabled,
+            ]}>
+            {isNotificationPermissionLoading ? (
+              <ActivityIndicator color={AppTheme.primary} />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="bell-ring-outline" size={18} color={AppTheme.primary} />
+                <Text style={styles.inlineButtonText}>
+                  {notificationPermission.canAskAgain ? 'Activer les notifications' : 'Ouvrir les réglages'}
+                </Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
 
       {dashboardError ? (
         <View style={styles.errorBox}>
@@ -676,9 +1019,9 @@ export default function Home({ session }: HomeProps) {
           <Text style={styles.loadingText}>Chargement du groupe...</Text>
         </View>
       ) : (
-        <View style={styles.usersList}>
-          {users.length > 0 ? (
-            users.map(renderUserCard)
+        <View style={styles.activityList}>
+          {activityFeed.length > 0 ? (
+            activityFeed.map(renderActivityItem)
           ) : (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>Aucune information</Text>
@@ -690,20 +1033,6 @@ export default function Home({ session }: HomeProps) {
         </View>
       )}
 
-      <Pressable
-        disabled={isSigningOut}
-        onPress={handleSignOut}
-        style={({ pressed }) => [
-          styles.signOutButton,
-          pressed && styles.signOutButtonPressed,
-          isSigningOut && styles.buttonDisabled,
-        ]}>
-        {isSigningOut ? (
-          <ActivityIndicator color={AppTheme.primary} />
-        ) : (
-          <Text style={styles.signOutButtonText}>Se déconnecter</Text>
-        )}
-      </Pressable>
     </View>
   );
 
@@ -870,6 +1199,127 @@ export default function Home({ session }: HomeProps) {
     </View>
   );
 
+  const renderSettingsTab = () => (
+    <View style={styles.tabContent}>
+      <View style={styles.formHeader}>
+        <Text style={styles.title}>Paramètres</Text>
+        <Text style={styles.subtitle}>
+          Choisis le pseudo affiché dans le fil et gère ta session.
+        </Text>
+      </View>
+
+      <View style={styles.formCard}>
+        <View style={styles.profileSummary}>
+          <View style={styles.profileAvatar}>
+            <Text style={styles.profileAvatarText}>
+              {(profilePseudo || email).charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.profileSummaryText}>
+            <Text style={styles.profileName}>{profilePseudo || 'Aucun pseudo'}</Text>
+            <Text numberOfLines={1} style={styles.profileEmail}>
+              {email}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Pseudo</Text>
+          <TextInput
+            value={profileDraft}
+            onChangeText={setProfileDraft}
+            autoCapitalize="words"
+            autoCorrect={false}
+            editable={!isSavingProfile}
+            maxLength={32}
+            placeholder="Ex : Alex"
+            placeholderTextColor={AppTheme.placeholder}
+            returnKeyType="done"
+            style={styles.input}
+            onSubmitEditing={handleSaveProfile}
+          />
+          <Text style={styles.helperText}>{profileDraft.trim().length}/32 caractères</Text>
+        </View>
+
+        <Pressable
+          disabled={isSavingProfile}
+          onPress={handleSaveProfile}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            pressed && styles.primaryButtonPressed,
+            isSavingProfile && styles.buttonDisabled,
+          ]}>
+          {isSavingProfile ? (
+            <ActivityIndicator color={AppTheme.surface} />
+          ) : (
+            <Text style={styles.primaryButtonText}>Enregistrer le profil</Text>
+          )}
+        </Pressable>
+      </View>
+
+      <Pressable
+        disabled={isSigningOut}
+        onPress={handleSignOut}
+        style={({ pressed }) => [
+          styles.signOutButton,
+          pressed && styles.signOutButtonPressed,
+          isSigningOut && styles.buttonDisabled,
+        ]}>
+        {isSigningOut ? (
+          <ActivityIndicator color={AppTheme.primary} />
+        ) : (
+          <Text style={styles.signOutButtonText}>Se déconnecter</Text>
+        )}
+      </Pressable>
+    </View>
+  );
+
+  const renderNotificationPermissionModal = () => (
+    <Modal
+      animationType="fade"
+      onRequestClose={() => setIsNotificationPromptDismissed(true)}
+      transparent
+      visible={shouldShowNotificationModal}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.notificationModal}>
+          <View style={styles.modalIcon}>
+            <MaterialCommunityIcons name="bell-ring-outline" size={30} color={AppTheme.primary} />
+          </View>
+          <Text style={styles.modalTitle}>Activer les notifications</Text>
+          <Text style={styles.modalText}>
+            Reçois tes rappels pour la pesée et les repas.
+          </Text>
+
+          <Pressable
+            disabled={isNotificationPermissionLoading}
+            onPress={handleRequestNotifications}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && styles.primaryButtonPressed,
+              isNotificationPermissionLoading && styles.buttonDisabled,
+            ]}>
+            {isNotificationPermissionLoading ? (
+              <ActivityIndicator color={AppTheme.surface} />
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                {notificationPermission.canAskAgain ? 'Activer' : 'Ouvrir les réglages'}
+              </Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            onPress={() => setIsNotificationPromptDismissed(true)}
+            style={({ pressed }) => [
+              styles.modalSecondaryButton,
+              pressed && styles.modalSecondaryButtonPressed,
+            ]}>
+            <Text style={styles.modalSecondaryButtonText}>Plus tard</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const renderActiveTab = () => {
     if (activeTab === 'meal') {
       return renderMealTab();
@@ -877,6 +1327,10 @@ export default function Home({ session }: HomeProps) {
 
     if (activeTab === 'weight') {
       return renderWeightTab();
+    }
+
+    if (activeTab === 'settings') {
+      return renderSettingsTab();
     }
 
     return renderHomeTab();
@@ -900,7 +1354,7 @@ export default function Home({ session }: HomeProps) {
               <View style={styles.brandText}>
                 <Text style={styles.appName}>Suivi Repas</Text>
                 <Text numberOfLines={1} style={styles.appMeta}>
-                  {email}
+                  {displayIdentity}
                 </Text>
               </View>
             </View>
@@ -938,6 +1392,7 @@ export default function Home({ session }: HomeProps) {
           })}
         </View>
       </KeyboardAvoidingView>
+      {renderNotificationPermissionModal()}
     </SafeAreaView>
   );
 }
@@ -1062,81 +1517,144 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: AppTheme.primarySoft,
   },
-  usersList: {
-    gap: 14,
-  },
-  userCard: {
-    gap: 16,
+  notificationHomeCard: {
+    gap: 12,
     borderWidth: 1,
-    borderColor: AppTheme.border,
+    borderColor: AppTheme.primaryBorder,
     borderRadius: 8,
-    backgroundColor: AppTheme.surface,
-    padding: 16,
-    shadowColor: AppTheme.shadow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
-    elevation: 2,
+    backgroundColor: AppTheme.primarySoft,
+    padding: 14,
   },
-  userHeader: {
+  notificationHomeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  avatar: {
-    width: 44,
-    height: 44,
+  notificationHomeIcon: {
+    width: 42,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: AppTheme.primaryBorder,
-    borderRadius: 12,
-    backgroundColor: AppTheme.primarySoft,
+    borderRadius: 10,
+    backgroundColor: AppTheme.surface,
   },
-  avatarText: {
-    color: AppTheme.primary,
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  userTitle: {
+  notificationHomeText: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
-  userEmail: {
+  notificationHomeTitle: {
     color: AppTheme.text,
     fontSize: 16,
     fontWeight: '900',
   },
-  userMeta: {
-    color: AppTheme.textMuted,
+  notificationHomeSubtitle: {
+    color: AppTheme.textSoft,
     fontSize: 13,
     lineHeight: 18,
   },
-  infoRows: {
-    gap: 12,
+  defaultRemindersList: {
+    gap: 4,
   },
-  infoRow: {
-    flexDirection: 'row',
+  defaultReminderText: {
+    color: AppTheme.textSoft,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  activityList: {
     gap: 10,
+  },
+  activityItem: {
+    gap: 12,
     borderWidth: 1,
     borderColor: AppTheme.border,
     borderRadius: 8,
-    backgroundColor: AppTheme.surfaceAlt,
-    padding: 12,
+    backgroundColor: AppTheme.surface,
+    padding: 14,
   },
-  infoText: {
+  activityMainRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 11,
+  },
+  activityIcon: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+  },
+  activityIconMeal: {
+    borderColor: AppTheme.primaryBorder,
+    backgroundColor: AppTheme.primarySoft,
+  },
+  activityIconWeight: {
+    borderColor: AppTheme.successBorder,
+    backgroundColor: AppTheme.successSoft,
+  },
+  activityText: {
     flex: 1,
-    gap: 2,
+    minWidth: 0,
+    gap: 3,
   },
-  infoLabel: {
+  activityTitle: {
+    color: AppTheme.text,
+    fontSize: 15,
+    fontWeight: '900',
+    lineHeight: 21,
+  },
+  activityTime: {
+    color: AppTheme.primary,
+  },
+  activityValue: {
+    color: AppTheme.textSoft,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  activityMeta: {
     color: AppTheme.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  reactionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  reactionButton: {
+    minWidth: 62,
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 10,
+    backgroundColor: AppTheme.surfaceAlt,
+    paddingHorizontal: 10,
+  },
+  reactionButtonUpActive: {
+    borderColor: AppTheme.primary,
+    backgroundColor: AppTheme.primary,
+  },
+  reactionButtonDownActive: {
+    borderColor: AppTheme.danger,
+    backgroundColor: AppTheme.danger,
+  },
+  reactionButtonPressed: {
+    opacity: 0.78,
+  },
+  reactionCount: {
+    color: AppTheme.textSoft,
     fontSize: 13,
     fontWeight: '900',
   },
-  infoValue: {
-    color: AppTheme.text,
-    fontSize: 15,
-    lineHeight: 21,
+  reactionCountActive: {
+    color: AppTheme.surface,
   },
   mealPhoto: {
     width: '100%',
@@ -1203,6 +1721,66 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 14,
     elevation: 2,
+  },
+  profileSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surfaceAlt,
+    padding: 12,
+  },
+  profileAvatar: {
+    width: 46,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 12,
+    backgroundColor: AppTheme.primarySoft,
+  },
+  profileAvatarText: {
+    color: AppTheme.primary,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  profileSummaryText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  profileName: {
+    color: AppTheme.text,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  profileEmail: {
+    color: AppTheme.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  inlineButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 10,
+    backgroundColor: AppTheme.primarySoft,
+    paddingHorizontal: 12,
+  },
+  inlineButtonPressed: {
+    backgroundColor: AppTheme.primarySoftPressed,
+  },
+  inlineButtonText: {
+    color: AppTheme.primary,
+    fontSize: 14,
+    fontWeight: '900',
   },
   chartCard: {
     gap: 16,
@@ -1369,6 +1947,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 16,
   },
+  helperText: {
+    color: AppTheme.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   photoActions: {
     flexDirection: 'row',
     gap: 10,
@@ -1474,6 +2057,64 @@ const styles = StyleSheet.create({
   signOutButtonText: {
     color: AppTheme.primary,
     fontSize: 16,
+    fontWeight: '900',
+  },
+  modalBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(16, 32, 22, 0.42)',
+    padding: 24,
+  },
+  notificationModal: {
+    width: '100%',
+    maxWidth: 420,
+    gap: 16,
+    borderRadius: 8,
+    backgroundColor: AppTheme.surface,
+    padding: 22,
+    shadowColor: AppTheme.shadow,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    elevation: 10,
+  },
+  modalIcon: {
+    width: 58,
+    height: 58,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: AppTheme.primaryBorder,
+    borderRadius: 14,
+    backgroundColor: AppTheme.primarySoft,
+  },
+  modalTitle: {
+    color: AppTheme.text,
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 30,
+  },
+  modalText: {
+    color: AppTheme.textSoft,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  modalSecondaryButton: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    borderRadius: 10,
+    backgroundColor: AppTheme.surface,
+  },
+  modalSecondaryButtonPressed: {
+    backgroundColor: AppTheme.surfaceAlt,
+  },
+  modalSecondaryButtonText: {
+    color: AppTheme.textSoft,
+    fontSize: 15,
     fontWeight: '900',
   },
   buttonDisabled: {
