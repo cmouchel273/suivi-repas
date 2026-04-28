@@ -63,13 +63,28 @@ const json = (body: unknown, status = 200) =>
   });
 
 const getRequiredEnv = (name: string) => {
-  const value = Deno.env.get(name);
+  const value = Deno.env.get(name)?.trim();
 
   if (!value) {
     throw new Error(`Missing environment variable: ${name}`);
   }
 
   return value;
+};
+
+const getVapidSubject = () => {
+  const rawSubject = Deno.env.get('WEB_PUSH_SUBJECT')?.trim();
+  const subject = rawSubject || 'mailto:contact@suivi-repas.app';
+
+  if (/^https?:\/\//i.test(subject) || /^mailto:/i.test(subject)) {
+    return subject;
+  }
+
+  if (subject.includes('@')) {
+    return `mailto:${subject}`;
+  }
+
+  return `https://${subject}`;
 };
 
 const getParisDateTime = (date: Date) => {
@@ -147,7 +162,7 @@ Deno.serve(async (request) => {
     const serviceRoleKey = getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY');
     const vapidPublicKey = getRequiredEnv('WEB_PUSH_VAPID_PUBLIC_KEY');
     const vapidPrivateKey = getRequiredEnv('WEB_PUSH_VAPID_PRIVATE_KEY');
-    const vapidSubject = Deno.env.get('WEB_PUSH_SUBJECT') ?? 'mailto:admin@suivi-repas.local';
+    const vapidSubject = getVapidSubject();
     const due = getDueReminders(new Date());
     const remindersToSend = requestBody.force
       ? DEFAULT_NOTIFICATION_REMINDERS.filter(

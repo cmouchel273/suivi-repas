@@ -59,7 +59,7 @@ Les notifications PWA utilisent le Web Push du navigateur, pas `expo-notificatio
 3. Ajoute les secrets Supabase avec les valeurs de ton `.env` local :
 
    ```bash
-   supabase secrets set WEB_PUSH_VAPID_PUBLIC_KEY=... WEB_PUSH_VAPID_PRIVATE_KEY=... WEB_PUSH_SUBJECT=... REMINDER_FUNCTION_SECRET=...
+   supabase secrets set WEB_PUSH_VAPID_PUBLIC_KEY=... WEB_PUSH_VAPID_PRIVATE_KEY=... WEB_PUSH_SUBJECT=mailto:contact@suivi-repas.app REMINDER_FUNCTION_SECRET=...
    ```
 
 4. Appelle `send-reminders` toutes les 5 minutes avec un cron Supabase (`supabase/web_push_cron.sql`) ou un cron externe :
